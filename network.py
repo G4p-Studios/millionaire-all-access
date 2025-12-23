@@ -1,7 +1,7 @@
 # network.py
 
 import socket
-import pickle # Used to serialize and deserialize Python objects
+import pickle
 
 class Network:
     def __init__(self, server_ip, server_port):
@@ -10,26 +10,29 @@ class Network:
         self.port = server_port
         self.addr = (self.server, self.port)
 
-    def connect(self):
+    def connect(self, player_name):
         """
-        Connects to the server and returns the initial data received (like player ID).
+        Connects to the server, sends the player name, 
+        and receives the assigned Player object (with ID).
         """
         try:
+            self.client.settimeout(5.0)
             self.client.connect(self.addr)
-            # The server will send back the new player object upon connecting
-            return pickle.loads(self.client.recv(2048))
+            
+            # --- HANDSHAKE ---
+            # Send the player name immediately
+            self.client.send(pickle.dumps(player_name))
+            
+            # Receive the assigned Player object
+            return pickle.loads(self.client.recv(4096))
         except socket.error as e:
             print(f"Connection Error: {e}")
             return None
 
     def send(self, data):
-        """
-        Sends data to the server and returns the server's response.
-        """
         try:
             self.client.send(pickle.dumps(data))
-            # The server is expected to reply with the updated game state
-            return pickle.loads(self.client.recv(2048))
+            return pickle.loads(self.client.recv(4096))
         except socket.error as e:
             print(f"Send/Receive Error: {e}")
             return None

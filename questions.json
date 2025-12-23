@@ -13,5 +13,65 @@
         "question": "What is the largest ocean on Earth?",
         "answers": ["Atlantic", "Indian", "Arctic", "Pacific"],
         "correct_answer": "D"
+    },
+    {
+        "question": "In which year did the BBC begin broadcasting on television?",
+        "answers": ["1925", "1930", "1936", "1945"],
+        "correct_answer": "C"
+    },
+    {
+        "question": "Which toxic compound do you get when you combine 1 carbon atom with 1 oxygen atom?",
+        "answers": ["Carbon dioxide", "Carbon monoxide", "Nitrous oxide", "Hydrogen cyanide"],
+        "correct_answer": "B"
+    },
+    {
+        "question": "Which UK political party rose to power in 1997?",
+        "answers": ["Conservative", "Labour", "Liberal Democrat", "Green Party"],
+        "correct_answer": "B"
+    },
+    {
+        "question": "In which year was Microsoft founded?",
+        "answers": ["1975", "1981", "1995", "2000"],
+        "correct_answer": "A"
+    },
+    {
+        "question": "What was the very first program to air on Channel4 in the UK on the day of its launch in 1982?",
+        "answers": ["Brookside", "Countdown", "Hollyoaks", "The Channel4 News"],
+        "correct_answer": "B"
+    },
+    {
+        "question": "Which Girls Aloud single was number 1 on the UK charts on Christmas Day in 2002?",
+        "answers": ["Biology", "No Good Advice", "Life Got Cold", "Sound of the Underground"],
+        "correct_answer": "D"
+    },
+    {
+        "question": "Which animal served as Microsoft's MSN logo from 2000 to 2010?",
+        "answers": ["The bee", "The butterfly", "The lion", "The mouse"],
+        "correct_answer": "B"
+    },
+    {
+        "question": "What name is given to a chemical reaction that releases energy in the form of heat?",
+        "answers": ["Exothermic", "Hypothermic", "Combustion", "Nuclear"],
+        "correct_answer": "A"
+    },
+    {
+        "question": "An item on social media that has spread to many people very rapidly is said to have gone what?",
+        "answers": ["Airborne", "Viral", "On fire", "Ballistic"],
+        "correct_answer": "B"
+    },
+    {
+        "question": "What does the T stand for in the SMTP protocol used to send emails?",
+        "answers": ["Transport", "Transmission", "Transfer", "Transcoding"],
+        "correct_answer": "C"
+    },
+    {
+        "question": "Which US sitcom is said to have successfully predicted many real life events?",
+        "answers": ["Veep", "Better Call Sall", "The Flintstones", "The Simpsons"],
+        "correct_answer": "D"
+    },
+    {
+        "question": "What illness did United States Founding Father Benjamin Franklin die of?",
+        "answers": ["Cancer", "Glandular Fever", "Spanish Flu", "Pleurisy"],
+        "correct_answer": "D"
     }
 ]
