@@ -9,12 +9,12 @@ SCREEN_TITLE = "All Access Millionaire"
 STD_BG = (0, 0, 200)       
 STD_TEXT = (255, 255, 255) 
 STD_HL = (255, 255, 0)     
-STD_SEL = (255, 165, 0)    # Orange for Selected answer
+STD_SEL = (255, 165, 0)    
 
 HC_BG = (0, 0, 0)          
 HC_TEXT = (255, 255, 255)  
 HC_HL = (0, 255, 0)        
-HC_SEL = (255, 255, 0)     # Yellow for Selected answer
+HC_SEL = (255, 255, 0)     
 
 # --- Font Sizes ---
 BASE_FONT_TITLE = 80
@@ -40,19 +40,26 @@ MONEY_TREE_USD = [
 
 # --- SOUND CONFIGURATION ---
 SOUND_FILES = {
-    # --- Background Music ---
+    # --- Background Music (Question Beds) ---
+    "q_bed_1_5": "026 $100-$1000 Questions.flac",
+    "q_bed_6": "055 $2000 Question.flac",
+    "q_bed_7": "060 $4000 Question.flac",
+    "q_bed_8": "065 $8000 Question.flac",
+    "q_bed_9": "070 $16000 Question.flac",
+    "q_bed_10": "075 $32000 Question.flac",
+    "q_bed_11": "080 $64000 Question.flac",
+    "q_bed_12": "083 $125000 Question.flac",
+    "q_bed_13": "086 $250000 Question.flac",
+    "q_bed_14": "089 $500000 Question.flac",
+    "q_bed_15": "092 $1000000 Question.flac",
+
+    # --- Other Sounds ---
     "theme": "theme.mp3",
-    "q1_5": "q1_5.mp3",
-    "q6_10": "q6_10.mp3",
-    "q11_14": "q11_14.mp3",
-    "q15": "q15.mp3",
     "walk_away": "walk_away.mp3",
     "lifeline": "lifeline.wav",
 
     # --- FINAL ANSWER SOUNDS ---
-    # Generic backup
     "final_answer": "final_answer.mp3", 
-    # Specifics
     "final_answer_5": "056 $2000 Final Answer.flac",
     "final_answer_6": "061 $4000 Final Answer.flac",
     "final_answer_7": "066 $8000 Final Answer.flac",

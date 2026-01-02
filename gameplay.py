@@ -58,15 +58,20 @@ class Gameplay:
             self.game.game_state = 'menu'
             return
         
-        # --- BACKGROUND MUSIC ---
-        if self.current_question_index < 5:
-            self.game.sounds.play_music("q1_5")
-        elif self.current_question_index < 10:
-            self.game.sounds.play_music("q6_10")
-        elif self.current_question_index < 14:
-            self.game.sounds.play_music("q11_14")
-        else:
-            self.game.sounds.play_music("q15")
+        # --- BACKGROUND MUSIC LOGIC ---
+        idx = self.current_question_index
+        if idx < 5:
+            self.game.sounds.play_music("q_bed_1_5")
+        elif idx == 5: self.game.sounds.play_music("q_bed_6")
+        elif idx == 6: self.game.sounds.play_music("q_bed_7")
+        elif idx == 7: self.game.sounds.play_music("q_bed_8")
+        elif idx == 8: self.game.sounds.play_music("q_bed_9")
+        elif idx == 9: self.game.sounds.play_music("q_bed_10")
+        elif idx == 10: self.game.sounds.play_music("q_bed_11")
+        elif idx == 11: self.game.sounds.play_music("q_bed_12")
+        elif idx == 12: self.game.sounds.play_music("q_bed_13")
+        elif idx == 13: self.game.sounds.play_music("q_bed_14")
+        elif idx == 14: self.game.sounds.play_music("q_bed_15")
             
         self.announce_question()
 
@@ -133,7 +138,6 @@ class Gameplay:
         idx = self.current_question_index
         sound_key = None
         
-        # --- REUSE LOGIC ---
         # 2k or 64k
         if idx == 5 or idx == 10: sound_key = "final_answer_5"
         # 4k or 125k
@@ -144,7 +148,6 @@ class Gameplay:
         elif idx == 8 or idx == 13: sound_key = "final_answer_8"
         # 32k or 1M
         elif idx == 9 or idx == 14: sound_key = "final_answer_9"
-        # Fallback
         else: sound_key = "final_answer" 
         
         if sound_key:
