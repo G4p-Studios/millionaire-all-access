@@ -9,10 +9,12 @@ SCREEN_TITLE = "All Access Millionaire"
 STD_BG = (0, 0, 200)       
 STD_TEXT = (255, 255, 255) 
 STD_HL = (255, 255, 0)     
+STD_SEL = (255, 165, 0)    # Orange for Selected answer
 
 HC_BG = (0, 0, 0)          
 HC_TEXT = (255, 255, 255)  
 HC_HL = (0, 255, 0)        
+HC_SEL = (255, 255, 0)     # Yellow for Selected answer
 
 # --- Font Sizes ---
 BASE_FONT_TITLE = 80
@@ -44,26 +46,35 @@ SOUND_FILES = {
     "q6_10": "q6_10.mp3",
     "q11_14": "q11_14.mp3",
     "q15": "q15.mp3",
-    "final_answer": "final_answer.mp3",
     "walk_away": "walk_away.mp3",
     "lifeline": "lifeline.wav",
 
+    # --- FINAL ANSWER SOUNDS ---
+    # Generic backup
+    "final_answer": "final_answer.mp3", 
+    # Specifics
+    "final_answer_5": "056 $2000 Final Answer.flac",
+    "final_answer_6": "061 $4000 Final Answer.flac",
+    "final_answer_7": "066 $8000 Final Answer.flac",
+    "final_answer_8": "071 $16000 Final Answer.flac",
+    "final_answer_9": "076 $32000 Final Answer.flac",
+
     # --- WIN STINGS ---
-    "win_0": "027 $100-$500 Yes.flac",             # $100
-    "win_1": "027 $100-$500 Yes.flac",             # $200
-    "win_2": "027 $100-$500 Yes.flac",             # $300
-    "win_3": "027 $100-$500 Yes.flac",             # $500
-    "win_4": "$1000 Win & $2000 Lights Down.flac", # $1,000 (Milestone)
-    "win_5": "058 $2000 Win.flac",                 # $2,000
-    "win_6": "063 $4000 Win.flac",                 # $4,000
-    "win_7": "068 $8000 Win.flac",                 # $8,000
-    "win_8": "073 $16000 Win.flac",                # $16,000 (UPDATED)
-    "win_9": "078 $32000 Win.flac",                # $32,000 (Milestone)
-    "win_10": "082 $64000 Win.flac",               # $64,000
-    "win_11": "085 $125000 Win.flac",              # $125,000
-    "win_12": "088 $250000 Win.flac",              # $250,000
-    "win_13": "091 $500000 Win.flac",              # $500,000
-    "win_14": "094 $1000000 Win.flac",             # $1 Million
+    "win_0": "027 $100-$500 Yes.flac",             
+    "win_1": "027 $100-$500 Yes.flac",             
+    "win_2": "027 $100-$500 Yes.flac",             
+    "win_3": "027 $100-$500 Yes.flac",             
+    "win_4": "$1000 Win & $2000 Lights Down.flac", 
+    "win_5": "058 $2000 Win.flac",                 
+    "win_6": "063 $4000 Win.flac",                 
+    "win_7": "068 $8000 Win.flac",                 
+    "win_8": "073 $16000 Win.flac",                
+    "win_9": "078 $32000 Win.flac",                
+    "win_10": "082 $64000 Win.flac",               
+    "win_11": "085 $125000 Win.flac",              
+    "win_12": "088 $250000 Win.flac",              
+    "win_13": "091 $500000 Win.flac",              
+    "win_14": "094 $1000000 Win.flac",             
 
     # --- LOSE STINGS ---
     "lose_0": "028 $100-$1000 No.flac",
