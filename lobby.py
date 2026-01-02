@@ -6,14 +6,13 @@ import accessible_output as accessibility
 
 class Lobby:
     def __init__(self, game):
+        # FIX: Ensure no lingering inputs (like Enter from menu) trigger actions
+        pygame.event.clear()
+        
         self.game = game
         self.screen = game.screen
         self.players = []
-        self.font = pygame.font.Font(None, 60)
-        self.title_font = pygame.font.Font(None, 90)
-        self.small_font = pygame.font.Font(None, 40)
         self.is_host = (self.game.player_id == 0) 
-        
         self.lobby_name = "Lobby" 
 
         if self.is_host:
@@ -40,7 +39,6 @@ class Lobby:
                 accessibility.speak(f"Players in {self.lobby_name}: {player_names}")
             else:
                  self.players = game_state["players"]
-
             if game_state["game_started"]:
                 self.game.start_game()
         else:
@@ -49,25 +47,28 @@ class Lobby:
 
     def draw(self):
         colors = self.game.config.colors
+        font_title = self.game.config.fonts["title"]
+        font_main = self.game.config.fonts["main"]
+        font_small = self.game.config.fonts["small"]
 
         # Draw title
-        title_text = self.title_font.render(self.lobby_name, True, colors["text"])
+        title_text = font_title.render(self.lobby_name, True, colors["text"])
         title_rect = title_text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 5))
         self.screen.blit(title_text, title_rect)
         
         # Draw player list
         for index, player in enumerate(self.players):
             player_text = f"{player.name}"
-            player_surface = self.font.render(player_text, True, colors["text"])
+            player_surface = font_main.render(player_text, True, colors["text"])
             player_rect = player_surface.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + index * 70))
             self.screen.blit(player_surface, player_rect)
         
         # Draw instruction
         if self.is_host:
-            inst_text = self.font.render("Press Enter to Start", True, colors["highlight"])
+            inst_text = font_main.render("Press Enter to Start", True, colors["highlight"])
             inst_rect = inst_text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100))
             self.screen.blit(inst_text, inst_rect)
         else:
-            inst_text = self.small_font.render("Waiting for host...", True, colors["dim"])
+            inst_text = font_small.render("Waiting for host...", True, colors["dim"])
             inst_rect = inst_text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100))
             self.screen.blit(inst_text, inst_rect)

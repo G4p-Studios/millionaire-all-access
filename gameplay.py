@@ -9,17 +9,14 @@ import accessible_output as accessibility
 
 class Gameplay:
     def __init__(self, game):
+        pygame.key.set_repeat(0)
         self.game = game
         self.screen = game.screen
         self.questions = []
         self.current_question_index = 0
-        
-        # --- CHANGED: Get Money Tree from Config (Currency aware) ---
         self.money_tree = self.game.config.get_money_tree()
-        
         self.lifelines = {"1: 50:50": True, "2: Phone a Friend": True, "3: Ask the Audience": True}
         self.answers_to_display = ['A', 'B', 'C', 'D']
-
         self.load_questions()
         if self.questions:
             self.setup_new_question()
@@ -39,13 +36,34 @@ class Gameplay:
             self.game.game_state = 'menu'
 
     def setup_new_question(self):
+        pygame.event.clear()
+        
         if not self.questions or self.current_question_index >= len(self.questions) or self.current_question_index >= len(self.money_tree):
+            # Win Game Logic
             winnings = self.money_tree[len(self.questions) - 1]
+            
+            # Play Win sound and wait
+            self.game.sounds.play("win_14")
+            duration = self.game.sounds.get_length("win_14")
+            pygame.time.wait(int(duration * 1000) + 500)
+            
             accessibility.speak(f"Congratulations! You have answered all the questions and won {winnings}!")
             pygame.time.wait(2000)
             self.game.game_state = 'menu'
             return
+        
         self.answers_to_display = ['A', 'B', 'C', 'D']
+        
+        # --- BACKGROUND MUSIC ---
+        if self.current_question_index < 5:
+            self.game.sounds.play_music("q1_5")
+        elif self.current_question_index < 10:
+            self.game.sounds.play_music("q6_10")
+        elif self.current_question_index < 14:
+            self.game.sounds.play_music("q11_14")
+        else:
+            self.game.sounds.play_music("q15")
+            
         self.announce_question()
 
     def announce_question(self):
@@ -83,9 +101,12 @@ class Gameplay:
 
     def use_lifeline(self, name):
         if self.lifelines.get(name):
+            self.game.sounds.play("lifeline")
             accessibility.speak(f"Using {name}.", interrupt=True)
             self.lifelines[name] = False
-            pygame.time.wait(500)
+            pygame.time.wait(1000)
+            pygame.event.clear()
+            
             if name == "1: 50:50": self._use_fifty_fifty()
             elif name == "2: Phone a Friend": self._use_phone_a_friend()
             elif name == "3: Ask the Audience": self._use_ask_the_audience()
@@ -130,19 +151,61 @@ class Gameplay:
 
     def walk_away(self):
         winnings = "nothing" if self.current_question_index == 0 else self.money_tree[self.current_question_index - 1]
+        self.game.sounds.stop_music()
+        
+        # Play Walk Away sound and wait
+        self.game.sounds.play("walk_away")
+        duration = self.game.sounds.get_length("walk_away")
+        pygame.time.wait(int(duration * 1000) + 500)
+        
         accessibility.speak(f"You have chosen to walk away with {winnings}. Congratulations!", interrupt=True)
         pygame.time.wait(2000)
         self.game.game_state = 'menu'
 
     def check_answer(self, selected_option):
+        self.game.sounds.stop_music()
+        
+        if self.current_question_index >= 5:
+            self.game.sounds.play("final_answer")
+            pygame.time.wait(2000) 
+        
         correct_answer = self.questions[self.current_question_index]['correct_answer']
+        
         if selected_option == correct_answer:
+            sound_key = f"win_{self.current_question_index}"
+            
+            # 1. Play Sound
+            self.game.sounds.play(sound_key)
+            
+            # 2. Calculate Wait (Duration + 0.5s)
+            duration = self.game.sounds.get_length(sound_key)
+            wait_ms = int(duration * 1000) + 125
+            
+            # 3. Wait BEFORE Speaking
+            pygame.time.wait(wait_ms)
+            
             winnings = self.money_tree[self.current_question_index]
             accessibility.speak(f"Correct! You have won {winnings}.", interrupt=True)
+            
+            # Additional small pause before loading next Q
             pygame.time.wait(1000)
+            
+            pygame.event.clear()
             self.current_question_index += 1
             self.setup_new_question() 
         else:
+            sound_key = f"lose_{self.current_question_index}"
+            
+            # 1. Play Sound
+            self.game.sounds.play(sound_key)
+            
+            # 2. Calculate Wait
+            duration = self.game.sounds.get_length(sound_key)
+            wait_ms = int(duration * 1000) + 125
+            
+            # 3. Wait BEFORE Speaking
+            pygame.time.wait(wait_ms)
+            
             accessibility.speak(f"Incorrect. The correct answer was {correct_answer}. Game over.", interrupt=True)
             pygame.time.wait(2000)
             self.game.game_state = 'menu'
@@ -155,21 +218,18 @@ class Gameplay:
         font_title = self.game.config.fonts["title"]
         font_small = self.game.config.fonts["small"]
 
-        # Draw Winnings
         prize_money = self.money_tree[self.current_question_index]
         winnings_text = f"Question Value: {prize_money}"
         winnings_surface = font_title.render(winnings_text, True, colors["highlight"])
         winnings_rect = winnings_surface.get_rect(center=(SCREEN_WIDTH / 2, 50))
         self.screen.blit(winnings_surface, winnings_rect)
         
-        # Draw Question
         q_data = self.questions[self.current_question_index]
         question_text = q_data['question']
         question_surface = font_title.render(question_text, True, colors["text"])
         question_rect = question_surface.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 4))
         self.screen.blit(question_surface, question_rect)
 
-        # Draw Answers
         answers = q_data['answers']
         answer_labels = ['A', 'B', 'C', 'D']
         for i, label in enumerate(answer_labels):
@@ -177,11 +237,10 @@ class Gameplay:
                 answer_text = f"{label}: {answers[i]}"
                 answer_surface = font_main.render(answer_text, True, colors["text"])
                 x_pos = SCREEN_WIDTH / 4 + (i % 2) * (SCREEN_WIDTH / 2)
-                y_pos = SCREEN_HEIGHT / 2 + (i // 2) * 150 # Increased spacing for larger fonts
+                y_pos = SCREEN_HEIGHT / 2 + (i // 2) * 150
                 answer_rect = answer_surface.get_rect(center=(x_pos, y_pos))
                 self.screen.blit(answer_surface, answer_rect)
         
-        # Draw Lifelines
         for i, (name, available) in enumerate(self.lifelines.items()):
             color = colors["text"] if available else colors["dim"]
             lifeline_surface = font_small.render(name, True, color)

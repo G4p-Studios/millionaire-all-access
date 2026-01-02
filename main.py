@@ -9,6 +9,7 @@ from lobby import Lobby
 from gameplay import Gameplay
 from network import Network
 from config import Config
+from sound_manager import SoundManager # --- NEW IMPORT ---
 
 class Game:
     def __init__(self):
@@ -21,6 +22,9 @@ class Game:
         self.config = Config()
         if self.config.data["fullscreen"]:
             self.set_fullscreen(True)
+
+        # --- NEW: Init Sound Manager ---
+        self.sounds = SoundManager()
         
         self.game_state = 'menu'
         self.network = None
@@ -39,8 +43,6 @@ class Game:
 
     def connect_to_server(self, ip_address, port=SERVER_PORT):
         self.network = Network(ip_address, port)
-        
-        # Get the name from config to send to server
         my_name = self.config.data["player_name"]
         
         player_data = self.network.connect(my_name)
@@ -64,6 +66,11 @@ class Game:
 
     def end_session(self):
         self.game_state = 'menu'
+        # Stop gameplay music
+        self.sounds.stop_all()
+        # Restart Menu music
+        self.sounds.play_music("theme")
+        
         if self.network:
             self.network = None
         if self.server_process:
@@ -75,9 +82,13 @@ class Game:
         self.lobby = None
         self.gameplay = None
         self.menu = Menu(self)
+        pygame.key.set_repeat(0)
         accessibility.speak("Returned to Main Menu.")
 
     def run(self):
+        # Start Theme Music on launch
+        self.sounds.play_music("theme")
+        
         while self.running:
             self.events()
             self.update()
