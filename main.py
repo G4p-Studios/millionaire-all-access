@@ -9,11 +9,14 @@ from lobby import Lobby
 from gameplay import Gameplay
 from network import Network
 from config import Config
-from sound_manager import SoundManager # --- NEW IMPORT ---
+from sound_manager import SoundManager
 
 class Game:
     def __init__(self):
         pygame.init()
+        # Ensure repeat is off by default
+        pygame.key.set_repeat(0)
+        
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption(SCREEN_TITLE)
         self.clock = pygame.time.Clock()
@@ -23,7 +26,6 @@ class Game:
         if self.config.data["fullscreen"]:
             self.set_fullscreen(True)
 
-        # --- NEW: Init Sound Manager ---
         self.sounds = SoundManager()
         
         self.game_state = 'menu'
@@ -66,9 +68,7 @@ class Game:
 
     def end_session(self):
         self.game_state = 'menu'
-        # Stop gameplay music
         self.sounds.stop_all()
-        # Restart Menu music
         self.sounds.play_music("theme")
         
         if self.network:
@@ -86,9 +86,7 @@ class Game:
         accessibility.speak("Returned to Main Menu.")
 
     def run(self):
-        # Start Theme Music on launch
         self.sounds.play_music("theme")
-        
         while self.running:
             self.events()
             self.update()
@@ -100,14 +98,36 @@ class Game:
             if event.type == pygame.QUIT: self.quit()
             
             if event.type == pygame.KEYDOWN:
+                # --- GLOBAL SHORTCUTS ---
                 if event.key == pygame.K_F1:
-                    accessibility.speak("Help: Arrow keys to navigate, Enter to select.")
-                if event.key == pygame.K_F11:
+                    accessibility.speak("Help: Arrow keys to navigate, Enter to select, Escape to go back.")
+                elif event.key == pygame.K_F11:
                     self.config.toggle_fullscreen()
                     self.set_fullscreen(self.config.data["fullscreen"])
                     state = "Fullscreen" if self.config.data["fullscreen"] else "Windowed"
                     accessibility.speak(state)
+                
+                # --- ESCAPE LOGIC ---
+                elif event.key == pygame.K_ESCAPE:
+                    # 1. LOBBY: Allow leaving
+                    if self.game_state == 'lobby':
+                        accessibility.speak("Leaving session.")
+                        self.end_session()
+                        continue 
+                    
+                    # 2. GAMEPLAY: BLOCK Escape (User must use W)
+                    elif self.game_state == 'gameplay':
+                        accessibility.speak("Press W to walk away.")
+                        continue
 
+                    # 3. MENU: Handle Quit vs Back
+                    elif self.game_state == 'menu':
+                        # If at top level menu, Quit. 
+                        if self.menu.state == "MAIN":
+                            self.quit()
+                        # If in submenu, pass to menu handler (handled in menu.py via change_state)
+
+            # Pass events to state handlers
             if self.game_state == 'menu': self.menu.handle_event(event)
             elif self.game_state == 'lobby' and self.lobby: self.lobby.handle_event(event)
             elif self.game_state == 'gameplay' and self.gameplay: self.gameplay.handle_event(event)

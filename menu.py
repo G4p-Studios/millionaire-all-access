@@ -14,7 +14,6 @@ class Menu:
         self.screen = game.screen
         self.state = "MAIN"
         
-        # Ensure theme music is playing
         self.game.sounds.play_music("theme")
         
         self.host_config = {
@@ -30,6 +29,10 @@ class Menu:
             "Port": str(SERVER_PORT)
         }
 
+        self.join_public_config = {
+            "Player Name": self.game.config.data["player_name"]
+        }
+
         self.public_lobbies = []
         self.public_lobby_status = "Loading..."
 
@@ -38,7 +41,7 @@ class Menu:
             "HOST_CONFIG": ["Lobby Name", "Port", "Host Name", "Public", "Start Server", "Back"],
             "JOIN_SELECT": ["Join Private Lobby", "Join Public Lobby", "Back"],
             "JOIN_PRIVATE": ["Player Name", "IP Address", "Port", "Connect", "Back"],
-            "JOIN_PUBLIC": ["Refresh", "Back"],
+            "JOIN_PUBLIC": ["Player Name", "Refresh", "Back"],
             "SETTINGS": ["Theme", "Font Size", "Fullscreen", "Currency", "Speech Interrupt", "Lobby Spy URL", "Back"]
         }
 
@@ -50,13 +53,10 @@ class Menu:
 
     def announce_current_selection(self):
         item_text = self.get_current_item_text()
-        
-        # Default properties
         control_type = "button"
         value_text = ""
         help_text = ""
 
-        # --- SETTINGS MENU ---
         if self.state == "SETTINGS":
             if item_text == "Theme":
                 control_type = "toggle"
@@ -84,7 +84,6 @@ class Menu:
                 value_text = self.game.config.data['lobby_spy_url']
                 help_text = "Press Enter to type"
 
-        # --- HOST CONFIGURATION ---
         elif self.state == "HOST_CONFIG":
             if item_text in ["Lobby Name", "Port", "Host Name"]:
                 control_type = "edit text"
@@ -95,30 +94,24 @@ class Menu:
                 state = self.host_config.get("Public", False)
                 value_text = "checked" if state else "unchecked"
             
-        # --- JOIN PRIVATE ---
         elif self.state == "JOIN_PRIVATE":
             if item_text in ["Player Name", "IP Address", "Port"]:
                 control_type = "edit text"
                 value_text = self.join_private_config.get(item_text, "")
                 help_text = "Press Enter to type"
 
-        # --- JOIN PUBLIC ---
         elif self.state == "JOIN_PUBLIC":
-            if item_text.startswith("Lobby:"):
-                # Treat dynamic lobby items as buttons
+            if item_text == "Player Name":
+                control_type = "edit text"
+                value_text = self.join_public_config.get(item_text, "")
+                help_text = "Press Enter to type"
+            elif item_text.startswith("Lobby:"):
                 pass
 
-        # --- CONSTRUCT ANNOUNCEMENT ---
-        # Format: "Label: Value, Type. Help."
         announcement = item_text
-        
-        if value_text:
-            announcement += f": {value_text}"
-        
+        if value_text: announcement += f": {value_text}"
         announcement += f", {control_type}"
-        
-        if help_text:
-            announcement += f". {help_text}"
+        if help_text: announcement += f". {help_text}"
 
         accessibility.speak(announcement)
 
@@ -134,6 +127,7 @@ class Menu:
         
         if self.state == "HOST_CONFIG": target_dict = self.host_config
         elif self.state == "JOIN_PRIVATE": target_dict = self.join_private_config
+        elif self.state == "JOIN_PUBLIC" and key == "Player Name": target_dict = self.join_public_config
         elif self.state == "SETTINGS" and key == "Lobby Spy URL":
             target_dict = self.game.config.data
             key = "lobby_spy_url"
@@ -172,6 +166,9 @@ class Menu:
                 self.game.config.data["player_name"] = current_val
                 self.game.config.save()
             elif self.state == "JOIN_PRIVATE" and key == "Player Name":
+                self.game.config.data["player_name"] = current_val
+                self.game.config.save()
+            elif self.state == "JOIN_PUBLIC" and key == "Player Name":
                 self.game.config.data["player_name"] = current_val
                 self.game.config.save()
             elif self.state == "SETTINGS" and key == "lobby_spy_url":
@@ -337,9 +334,10 @@ class Menu:
         elif self.state == "JOIN_PUBLIC":
             if selection == "Back": self.change_state("JOIN_SELECT")
             elif selection == "Refresh": self.fetch_public_lobbies()
+            elif selection == "Player Name": self.start_editing()
             elif selection.startswith("Lobby:"):
                 try:
-                    lobby_idx = self.selected_index - 1 
+                    lobby_idx = self.selected_index - 2 
                     if 0 <= lobby_idx < len(self.public_lobbies):
                         lobby_data = self.public_lobbies[lobby_idx]
                         ip = lobby_data.get('ip', '127.0.0.1')
@@ -415,22 +413,27 @@ class Menu:
                     name = l.get('name', 'Unknown')
                     host = l.get('host', 'Unknown')
                     lobby_items.append(f"Lobby: {name} (Host: {host})")
-                self.items["JOIN_PUBLIC"] = ["Refresh"] + lobby_items + ["Back"]
+                self.items["JOIN_PUBLIC"] = ["Player Name", "Refresh"] + lobby_items + ["Back"]
                 accessibility.speak(self.public_lobby_status)
         except Exception as e:
             print(f"Spy Error: {e}")
             self.public_lobby_status = "Could not fetch lobbies."
-            self.items["JOIN_PUBLIC"] = ["Refresh", "Back"]
+            self.items["JOIN_PUBLIC"] = ["Player Name", "Refresh", "Back"]
             accessibility.speak("Could not reach Lobby Spy service.")
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
-            if self.editing: self.handle_text_input(event)
+            if self.editing:
+                self.handle_text_input(event)
+            # --- MODIFIED: Handle Escape for navigation ---
+            elif event.key == pygame.K_ESCAPE and self.state != "MAIN":
+                self.change_state("MAIN")
             else:
                 if event.key == pygame.K_UP: self.navigate(-1)
                 elif event.key == pygame.K_DOWN: self.navigate(1)
                 elif event.key == pygame.K_RETURN: self.select()
-                elif event.key == pygame.K_BACKSPACE and self.state != "MAIN": pass 
+                # Remove Backspace nav, rely on Escape
+                # elif event.key == pygame.K_BACKSPACE and self.state != "MAIN": pass 
 
     def draw(self):
         title = "Menu"
@@ -473,6 +476,9 @@ class Menu:
                 elif item_label == "Font Size": display_text = f"Font Size: {self.game.config.data['font_scale']}"
                 elif item_label == "Fullscreen": display_text = f"Fullscreen: {'On' if self.game.config.data['fullscreen'] else 'Off'}"
                 elif item_label == "Currency": display_text = f"Currency: {'Pounds' if self.game.config.data['currency'] == 'GBP' else 'Dollars'}"
+            elif self.state == "JOIN_PUBLIC" and item_label == "Player Name":
+                val = self.join_public_config[item_label]
+                display_text = f"{item_label}: {val}"
 
             center_x = SCREEN_WIDTH // 2
             center_y = start_y + i * (font_main.get_height() + 10)
