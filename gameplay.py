@@ -40,6 +40,22 @@ class Gameplay:
             accessibility.speak("Error: Could not read the questions.json file. Returning to menu.")
             self.game.game_state = 'menu'
 
+    def play_bgm(self):
+        """Helper to play the correct BGM for the current tier."""
+        idx = self.current_question_index
+        if idx < 5:
+            self.game.sounds.play_music("q_bed_1_5")
+        elif idx == 5: self.game.sounds.play_music("q_bed_6")
+        elif idx == 6: self.game.sounds.play_music("q_bed_7")
+        elif idx == 7: self.game.sounds.play_music("q_bed_8")
+        elif idx == 8: self.game.sounds.play_music("q_bed_9")
+        elif idx == 9: self.game.sounds.play_music("q_bed_10")
+        elif idx == 10: self.game.sounds.play_music("q_bed_11")
+        elif idx == 11: self.game.sounds.play_music("q_bed_12")
+        elif idx == 12: self.game.sounds.play_music("q_bed_13")
+        elif idx == 13: self.game.sounds.play_music("q_bed_14")
+        elif idx == 14: self.game.sounds.play_music("q_bed_15")
+
     def setup_new_question(self):
         pygame.event.clear()
         
@@ -58,21 +74,7 @@ class Gameplay:
             self.game.game_state = 'menu'
             return
         
-        # --- BACKGROUND MUSIC LOGIC ---
-        idx = self.current_question_index
-        if idx < 5:
-            self.game.sounds.play_music("q_bed_1_5")
-        elif idx == 5: self.game.sounds.play_music("q_bed_6")
-        elif idx == 6: self.game.sounds.play_music("q_bed_7")
-        elif idx == 7: self.game.sounds.play_music("q_bed_8")
-        elif idx == 8: self.game.sounds.play_music("q_bed_9")
-        elif idx == 9: self.game.sounds.play_music("q_bed_10")
-        elif idx == 10: self.game.sounds.play_music("q_bed_11")
-        elif idx == 11: self.game.sounds.play_music("q_bed_12")
-        elif idx == 12: self.game.sounds.play_music("q_bed_13")
-        elif idx == 13: self.game.sounds.play_music("q_bed_14")
-        elif idx == 14: self.game.sounds.play_music("q_bed_15")
-            
+        self.play_bgm()
         self.announce_question()
 
     def announce_question(self):
@@ -218,13 +220,73 @@ class Gameplay:
         accessibility.speak(f"The computer has removed options {removed_options[0]} and {removed_options[1]}. The remaining options are {self.answers_to_display[0]} and {self.answers_to_display[1]}.")
 
     def _use_phone_a_friend(self):
-        correct_answer = self.questions[self.current_question_index]['correct_answer']
-        is_correct = random.random() > (self.current_question_index / 20)
-        if is_correct: chosen_answer = correct_answer
+        # 1. Start Call Sequence (Blocking)
+        self.game.sounds.stop_music()
+        self.game.sounds.play("paf_call", loops=-1)
+        
+        accessibility.speak("Calling friend. Host, press Enter when they answer.", interrupt=True)
+        
+        # Wait for pickup
+        picked_up = False
+        while not picked_up:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.game.quit()
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+                    picked_up = True
+                    break
+            self.game.clock.tick(60) 
+        
+        self.game.sounds.stop_all() # Stop Ringing
+        
+        # 2. Start Clock
+        self.game.sounds.play("paf_clock")
+        start_time = time.time()
+        clock_running = True
+        answered_early = False
+        friend_answer = ""
+        
+        accessibility.speak("Clock started. Host, press A, B, C, or D if friend answers early.", interrupt=True)
+
+        while clock_running:
+            elapsed = time.time() - start_time
+            if elapsed >= 30:
+                clock_running = False
+                break
+                
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.game.quit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_a: friend_answer = "A"
+                    elif event.key == pygame.K_b: friend_answer = "B"
+                    elif event.key == pygame.K_c: friend_answer = "C"
+                    elif event.key == pygame.K_d: friend_answer = "D"
+                    
+                    if friend_answer:
+                        answered_early = True
+                        clock_running = False
+                        break
+                        
+            self.game.clock.tick(60)
+            
+        self.game.sounds.stop_all() # Stop Clock
+        
+        # 3. Resolution
+        if answered_early:
+            self.game.sounds.play("paf_end_early")
+            # Calculate dynamic wait + 125ms padding
+            duration = self.game.sounds.get_length("paf_end_early")
+            pygame.time.wait(int(duration * 1000) + 125)
+            
+            accessibility.speak(f"Your friend says the answer is {friend_answer}.")
         else:
-            incorrect_answers = [ans for ans in ['A', 'B', 'C', 'D'] if ans != correct_answer]
-            chosen_answer = random.choice(incorrect_answers)
-        accessibility.speak(f"Your friend is thinking... they say they are pretty sure the answer is {chosen_answer}.")
+            # Timeout wait + 125ms padding
+            pygame.time.wait(125)
+            accessibility.speak("The 30 seconds are up. Your friend did not answer in time.")
+            
+        # Restore Background Music
+        self.play_bgm()
 
     def _use_ask_the_audience(self):
         correct_answer = self.questions[self.current_question_index]['correct_answer']

@@ -58,6 +58,11 @@ SOUND_FILES = {
     "walk_away": "walk_away.mp3",
     "lifeline": "lifeline.wav",
 
+    # --- PHONE A FRIEND ---
+    "paf_call": "041 Phone a Friend - Call.flac",
+    "paf_clock": "042 Phone a Friend - 30 Second Clock.flac",
+    "paf_end_early": "043 Phone a Friend - End Call Early.flac",
+
     # --- FINAL ANSWER SOUNDS ---
     "final_answer": "final_answer.mp3", 
     "final_answer_5": "056 $2000 Final Answer.flac",
