@@ -26,6 +26,11 @@ FPS = 60
 SERVER_PORT = 50550
 LOBBY_SPY_URL = "http://lobbies.seedy.cc:1945/lobbies"
 
+SOUND_SEARCH_PATHS = [
+    "assets/sounds",
+    "sounds"
+]
+
 MONEY_TREE_GBP = [
     "£100", "£200", "£300", "£500", "£1,000",
     "£2,000", "£4,000", "£8,000", "£16,000", "£32,000",
@@ -36,6 +41,14 @@ MONEY_TREE_USD = [
     "$100", "$200", "$300", "$500", "$1,000",
     "$2,000", "$4,000", "$8,000", "$16,000", "$32,000",
     "$64,000", "$125,000", "$250,000", "$500,000", "$1 Million"
+]
+
+STUDIO_ZONES = [
+    "Contestant Area",
+    "Hot Seat",
+    "Host Control Panel",
+    "Audience Riser",
+    "Entrance"
 ]
 
 # --- SOUND CONFIGURATION ---
@@ -57,6 +70,14 @@ SOUND_FILES = {
     "theme": "theme.mp3",
     "walk_away": "walk_away.mp3",
     "lifeline": "lifeline.wav",
+    "ui_move": "ui_move.wav",
+    "ui_select": "ui_select.wav",
+    "ui_back": "ui_back.wav",
+    "ui_error": "ui_error.wav",
+    "ui_connect": "ui_connect.wav",
+    "ui_disconnect": "ui_disconnect.wav",
+    "ui_step": "ui_step.wav",
+    "ui_arrive": "ui_arrive.wav",
 
     # --- PHONE A FRIEND ---
     "paf_call": "041 Phone a Friend - Call.flac",
@@ -104,4 +125,18 @@ SOUND_FILES = {
     "lose_12": "087 $250000 Lose.flac",
     "lose_13": "090 $500000 Lose.flac",
     "lose_14": "093 $1000000 Lose.flac",
+}
+
+SOUND_CATEGORIES = {
+    "theme": "game",
+    "walk_away": "game",
+    "lifeline": "game",
+    "ui_move": "ui",
+    "ui_select": "ui",
+    "ui_back": "ui",
+    "ui_error": "ui",
+    "ui_connect": "ui",
+    "ui_disconnect": "ui",
+    "ui_step": "ui",
+    "ui_arrive": "ui",
 }

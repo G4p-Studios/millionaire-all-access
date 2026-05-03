@@ -6,6 +6,7 @@ class Player:
     def __init__(self, id):
         self.id = id
         self.name = f"Player {id}"
+        self.zone = "Contestant Area"
 
     def __repr__(self):
         return f"Player({self.id}, {self.name})"

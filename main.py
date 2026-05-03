@@ -51,9 +51,11 @@ class Game:
         if player_data:
             self.player_id = player_data.id
             role = "Host" if self.player_id == 0 else "Player"
+            self.sounds.play_ui("ui_connect", "ui_select")
             accessibility.speak(f"Connected as {role} (ID {self.player_id}).")
             self.start_lobby() 
         else:
+            self.sounds.play_ui("ui_error")
             accessibility.speak("Connection failed. Returning to menu.")
             if self.game_state != 'menu':
                 self.end_session()
@@ -70,6 +72,7 @@ class Game:
         self.game_state = 'menu'
         self.sounds.stop_all()
         self.sounds.play_music("theme")
+        self.sounds.play_ui("ui_disconnect", "ui_back")
         
         if self.network:
             self.network = None

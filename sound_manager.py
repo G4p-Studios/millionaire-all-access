@@ -2,7 +2,7 @@
 
 import pygame
 import os
-from settings import SOUND_FILES
+from settings import SOUND_FILES, SOUND_CATEGORIES, SOUND_SEARCH_PATHS
 
 class SoundManager:
     def __init__(self):
@@ -20,28 +20,51 @@ class SoundManager:
 
     def load_sounds(self):
         if not self.enabled: return
-        
-        sound_dir = "sounds"
-        if not os.path.exists(sound_dir):
+
+        for root in SOUND_SEARCH_PATHS:
             try:
-                os.makedirs(sound_dir)
-            except: pass
-            return
+                os.makedirs(root, exist_ok=True)
+            except Exception:
+                pass
 
         for key, filename in SOUND_FILES.items():
-            path = os.path.join(sound_dir, filename)
-            if os.path.exists(path):
+            path = self._resolve_sound_path(key, filename)
+            if path and os.path.exists(path):
                 try:
                     self.sounds[key] = pygame.mixer.Sound(path)
                 except Exception as e:
-                    print(f"Could not load {filename}: {e}")
+                    print(f"Could not load {path}: {e}")
             else:
-                print(f"Missing sound file: {path}")
+                print(f"Missing sound file for {key}: {filename}")
+
+    def _resolve_sound_path(self, key, filename):
+        category = SOUND_CATEGORIES.get(key)
+        candidates = []
+
+        for root in SOUND_SEARCH_PATHS:
+            if category:
+                candidates.append(os.path.join(root, category, filename))
+            candidates.append(os.path.join(root, filename))
+
+        for path in candidates:
+            if os.path.exists(path):
+                return path
+
+        return None
 
     def play(self, key, loops=0):
         if not self.enabled: return
         if key in self.sounds:
             self.sounds[key].play(loops=loops)
+
+    def play_ui(self, key, fallback_key=None):
+        if not self.enabled:
+            return
+        if key in self.sounds:
+            self.sounds[key].play()
+            return
+        if fallback_key and fallback_key in self.sounds:
+            self.sounds[fallback_key].play()
 
     def play_music(self, key, loops=-1):
         if not self.enabled: return

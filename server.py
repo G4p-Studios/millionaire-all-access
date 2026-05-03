@@ -119,6 +119,12 @@ def threaded_client(conn):
             with game_state_lock:
                 if command == "start" and player_id == 0:
                     game_state["game_started"] = True
+                elif isinstance(command, dict) and command.get("action") == "move_zone":
+                    zone_name = command.get("zone")
+                    for player in game_state["players"]:
+                        if player.id == player_id:
+                            player.zone = zone_name
+                            break
                 reply = game_state
             
             conn.sendall(pickle.dumps(reply))

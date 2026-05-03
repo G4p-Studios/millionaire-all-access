@@ -37,12 +37,13 @@ class Menu:
         self.public_lobby_status = "Loading..."
 
         self.items = {
-            "MAIN": ["Host Game", "Join Game", "Settings", "Quit"],
+            "MAIN": ["Host Game", "Join Game", "Host Quick Start", "Settings", "Quit"],
             "HOST_CONFIG": ["Lobby Name", "Port", "Host Name", "Public", "Start Server", "Back"],
             "JOIN_SELECT": ["Join Private Lobby", "Join Public Lobby", "Back"],
             "JOIN_PRIVATE": ["Player Name", "IP Address", "Port", "Connect", "Back"],
             "JOIN_PUBLIC": ["Player Name", "Refresh", "Back"],
-            "SETTINGS": ["Theme", "Font Size", "Fullscreen", "Currency", "Speech Interrupt", "Lobby Spy URL", "Back"]
+            "SETTINGS": ["Theme", "Font Size", "Fullscreen", "Currency", "Speech Interrupt", "Lobby Spy URL", "Back"],
+            "HOST_QUICKSTART": ["Back"]
         }
 
         self.selected_index = 0
@@ -141,6 +142,7 @@ class Menu:
         current_list = self.items.get(self.state, [])
         if not current_list: return
         self.selected_index = (self.selected_index + direction) % len(current_list)
+        self.game.sounds.play_ui("ui_move")
         self.announce_current_selection()
 
     def delete_selection(self, current_val):
@@ -274,12 +276,18 @@ class Menu:
 
     def select(self):
         selection = self.get_current_item_text()
+        self.game.sounds.play_ui("ui_select")
         
         if self.state == "MAIN":
             if selection == "Host Game": self.change_state("HOST_CONFIG")
             elif selection == "Join Game": self.change_state("JOIN_SELECT")
+            elif selection == "Host Quick Start": self.change_state("HOST_QUICKSTART")
             elif selection == "Settings": self.change_state("SETTINGS")
             elif selection == "Quit": self.game.quit()
+
+        elif self.state == "HOST_QUICKSTART":
+            if selection == "Back":
+                self.change_state("MAIN")
 
         elif self.state == "SETTINGS":
             if selection == "Theme":
@@ -353,6 +361,7 @@ class Menu:
             pygame.key.set_repeat(400, 30)
             self.cursor_pos = len(val)
             self.selection_anchor = None
+            self.game.sounds.play_ui("ui_select")
             accessibility.speak(f"Editing {key}. Type now.")
 
     def stop_editing(self):
@@ -361,9 +370,13 @@ class Menu:
         pygame.key.set_repeat(0)
 
     def change_state(self, new_state):
+        previous = self.state
         self.state = new_state
         self.selected_index = 0
         self.stop_editing()
+        if previous != new_state:
+            cue = "ui_back" if new_state == "MAIN" else "ui_select"
+            self.game.sounds.play_ui(cue)
         self.announce_current_selection()
 
     def start_hosting(self):
@@ -427,6 +440,7 @@ class Menu:
                 self.handle_text_input(event)
             # --- MODIFIED: Handle Escape for navigation ---
             elif event.key == pygame.K_ESCAPE and self.state != "MAIN":
+                self.game.sounds.play_ui("ui_back")
                 self.change_state("MAIN")
             else:
                 if event.key == pygame.K_UP: self.navigate(-1)
@@ -441,6 +455,7 @@ class Menu:
         elif self.state == "JOIN_SELECT": title = "Join Game"
         elif self.state == "JOIN_PRIVATE": title = "Join Private"
         elif self.state == "JOIN_PUBLIC": title = "Public Lobbies"
+        elif self.state == "HOST_QUICKSTART": title = "Host Quick Start"
         elif self.state == "SETTINGS": title = "Settings"
 
         colors = self.game.config.colors
@@ -528,6 +543,21 @@ class Menu:
                 item_surf = font_main.render(display_text, True, color)
                 rect = item_surf.get_rect(center=(center_x, center_y))
                 self.screen.blit(item_surf, rect)
+
+        if self.state == "HOST_QUICKSTART":
+            instructions = [
+                "1. Host Game: set lobby name and port, then Start Server.",
+                "2. Press Enter in lobby to start once players are ready.",
+                "3. In lobby use Left and Right to move around the studio.",
+                "4. Use A, B, C, D for answers. Press R to repeat question.",
+                "5. Use W to walk away. Host presses Enter to reveal lock-ins.",
+                "6. Press Escape any time to return to menu from lobby."
+            ]
+            top = 170
+            for line in instructions:
+                line_surface = font_small.render(line, True, colors["text"])
+                self.screen.blit(line_surface, (60, top))
+                top += font_small.get_height() + 10
         
         if self.state == "JOIN_PUBLIC":
             status_surf = font_small.render(self.public_lobby_status, True, colors["dim"])

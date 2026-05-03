@@ -91,6 +91,32 @@ class Gameplay:
         should_interrupt = self.game.config.data["speech_interrupt"]
         accessibility.speak(full_announcement, interrupt=should_interrupt)
 
+    def _draw_wrapped_text(self, text, font, color, rect, line_spacing=6):
+        words = text.split()
+        lines = []
+        current = ""
+
+        for word in words:
+            candidate = word if not current else f"{current} {word}"
+            if font.size(candidate)[0] <= rect.width - 24:
+                current = candidate
+            else:
+                if current:
+                    lines.append(current)
+                current = word
+        if current:
+            lines.append(current)
+
+        line_height = font.get_height() + line_spacing
+        total_height = len(lines) * line_height
+        y = rect.y + max(8, (rect.height - total_height) // 2)
+
+        for line in lines:
+            line_surface = font.render(line, True, color)
+            x = rect.centerx - line_surface.get_width() // 2
+            self.screen.blit(line_surface, (x, y))
+            y += line_height
+
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             # 1. LOCKED IN STATE: Waiting for Host Reveal
@@ -329,34 +355,54 @@ class Gameplay:
         winnings_surface = font_title.render(winnings_text, True, colors["highlight"])
         winnings_rect = winnings_surface.get_rect(center=(SCREEN_WIDTH / 2, 50))
         self.screen.blit(winnings_surface, winnings_rect)
-        
+
         q_data = self.questions[self.current_question_index]
         question_text = q_data['question']
-        question_surface = font_title.render(question_text, True, colors["text"])
-        question_rect = question_surface.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 4))
-        self.screen.blit(question_surface, question_rect)
+
+        panel_color = (30, 50, 160) if self.game.config.data["theme"] == "Standard" else (40, 40, 40)
+        panel_outline = colors["highlight"]
+
+        question_rect = pygame.Rect(110, SCREEN_HEIGHT - 320, SCREEN_WIDTH - 220, 98)
+        pygame.draw.rect(self.screen, panel_color, question_rect, border_radius=28)
+        pygame.draw.rect(self.screen, panel_outline, question_rect, width=4, border_radius=28)
+        self._draw_wrapped_text(question_text, font_main, colors["text"], question_rect)
 
         answers = q_data['answers']
         answer_labels = ['A', 'B', 'C', 'D']
+        answer_rects = {
+            'A': pygame.Rect(95, SCREEN_HEIGHT - 195, (SCREEN_WIDTH // 2) - 110, 70),
+            'B': pygame.Rect((SCREEN_WIDTH // 2) + 15, SCREEN_HEIGHT - 195, (SCREEN_WIDTH // 2) - 110, 70),
+            'C': pygame.Rect(95, SCREEN_HEIGHT - 110, (SCREEN_WIDTH // 2) - 110, 70),
+            'D': pygame.Rect((SCREEN_WIDTH // 2) + 15, SCREEN_HEIGHT - 110, (SCREEN_WIDTH // 2) - 110, 70),
+        }
+
+        for label in ['A', 'B', 'C', 'D']:
+            rect = answer_rects[label]
+            pygame.draw.rect(self.screen, panel_color, rect, border_radius=22)
+            pygame.draw.rect(self.screen, panel_outline, rect, width=3, border_radius=22)
+
+        pygame.draw.line(self.screen, panel_outline, question_rect.midbottom, answer_rects['A'].midtop, 2)
+        pygame.draw.line(self.screen, panel_outline, question_rect.midbottom, answer_rects['B'].midtop, 2)
+        pygame.draw.line(self.screen, panel_outline, answer_rects['A'].midbottom, answer_rects['C'].midtop, 2)
+        pygame.draw.line(self.screen, panel_outline, answer_rects['B'].midbottom, answer_rects['D'].midtop, 2)
+
         for i, label in enumerate(answer_labels):
             if label in self.answers_to_display:
                 answer_text = f"{label}: {answers[i]}"
-                
-                # --- COLOR LOGIC ---
+
                 text_color = colors["text"]
                 if self.is_locked_in and label == self.selected_answer:
                     text_color = STD_SEL if self.game.config.data["theme"] == "Standard" else HC_SEL
                 elif label == self.selected_answer:
                     text_color = colors["highlight"]
 
-                answer_surface = font_main.render(answer_text, True, text_color)
-                x_pos = SCREEN_WIDTH / 4 + (i % 2) * (SCREEN_WIDTH / 2)
-                y_pos = SCREEN_HEIGHT / 2 + (i // 2) * 150
-                answer_rect = answer_surface.get_rect(center=(x_pos, y_pos))
-                self.screen.blit(answer_surface, answer_rect)
+                answer_rect = answer_rects[label]
+                if label == self.selected_answer:
+                    pygame.draw.rect(self.screen, text_color, answer_rect, width=4, border_radius=22)
+                self._draw_wrapped_text(answer_text, font_small, text_color, answer_rect, line_spacing=4)
         
         for i, (name, available) in enumerate(self.lifelines.items()):
             color = colors["text"] if available else colors["dim"]
             lifeline_surface = font_small.render(name, True, color)
-            lifeline_rect = lifeline_surface.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100 + i * 40))
+            lifeline_rect = lifeline_surface.get_rect(center=(SCREEN_WIDTH / 2, 120 + i * 40))
             self.screen.blit(lifeline_surface, lifeline_rect)
