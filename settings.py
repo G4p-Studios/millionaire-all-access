@@ -83,6 +83,7 @@ SOUND_FILES = {
     "ui_leave": "leave.wav",
     "ui_step": "step.wav",
     "ui_arrive": "arrive.wav",
+    "ui_panel": "panel.wav",
     "ui_sit": "sitting.wav",
     "ui_stand": "standing.wav",
 
@@ -149,6 +150,7 @@ SOUND_CATEGORIES = {
     "ui_leave": "navigation",
     "ui_step": "navigation",
     "ui_arrive": "navigation",
+    "ui_panel": "navigation",
     "ui_sit": "navigation",
     "ui_stand": "navigation",
 }
