@@ -37,6 +37,7 @@ You can also open the in-game Host Quick Start screen from the main menu.
 
 - Left and Right: move between studio areas
 - Tab: move to next studio area
+- S: sit or stand when at a seat area
 - H: repeat lobby controls
 - Enter (host only): start game
 - Escape: leave session
@@ -58,6 +59,12 @@ Preferred structure:
 
 - assets/sounds/game
 - assets/sounds/ui
+- assets/sounds/navigation
+
+Recommended split:
+
+- ui_move, ui_select, ui_back, ui_error, ui_connect, ui_disconnect in assets/sounds/ui
+- leave.wav, step.wav, arrive.wav, sitting.wav, and standing.wav in assets/sounds/navigation
 
 Legacy fallback is still supported:
 

@@ -17,6 +17,13 @@ class Lobby:
         self.studio_zones = STUDIO_ZONES
         self.zone_index = 0
         self.current_zone = self.studio_zones[self.zone_index]
+        self.seat_zones = {"Contestant Area", "Hot Seat", "Host Control Panel"}
+        self.seat_labels = {
+            "Contestant Area": "contestant seat",
+            "Hot Seat": "hot seat",
+            "Host Control Panel": "host chair",
+        }
+        self.is_seated = False
 
         if self.is_host:
             accessibility.speak("Lobby created. Waiting for other players to join. Press Enter to start the game. Use left and right arrow keys to move around the set.")
@@ -24,20 +31,48 @@ class Lobby:
             accessibility.speak("Joined lobby. Waiting for the host to start the game. Use left and right arrow keys to move around the set.")
 
         self.game.network.send({"action": "move_zone", "zone": self.current_zone})
+        self.game.network.send({"action": "set_seated", "seated": False})
 
     def _announce_zone(self):
         self.game.sounds.play_ui("ui_arrive", "ui_select")
         accessibility.speak(f"You are at {self.current_zone}.")
 
     def _move_zone(self, direction):
+        if self.is_seated:
+            self._set_seated(False, announce=True)
+
+        self.game.sounds.play_ui("ui_leave", "ui_step")
         self.game.sounds.play_ui("ui_step", "ui_move")
         self.zone_index = (self.zone_index + direction) % len(self.studio_zones)
         self.current_zone = self.studio_zones[self.zone_index]
         self.game.network.send({"action": "move_zone", "zone": self.current_zone})
         self._announce_zone()
 
+    def _set_seated(self, seated, announce=True):
+        self.is_seated = seated
+        self.game.network.send({"action": "set_seated", "seated": seated})
+
+        seat_name = self.seat_labels.get(self.current_zone, "seat")
+
+        if seated:
+            self.game.sounds.play_ui("ui_sit", "ui_select")
+            if announce:
+                accessibility.speak(f"Sitting in the {seat_name}.")
+        else:
+            self.game.sounds.play_ui("ui_stand", "ui_leave")
+            if announce:
+                accessibility.speak(f"Standing from the {seat_name}.")
+
+    def _toggle_seat(self):
+        if self.current_zone not in self.seat_zones:
+            accessibility.speak("No seat at this location.")
+            self.game.sounds.play_ui("ui_error")
+            return
+
+        self._set_seated(not self.is_seated)
+
     def _announce_controls(self):
-        accessibility.speak("Lobby controls. Left and right move between studio areas. Enter starts the game if you are host. Escape leaves the lobby.")
+        accessibility.speak("Lobby controls. Left and right move between studio areas. S sits or stands when a seat is available. Enter starts the game if you are host. Escape leaves the lobby.")
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
@@ -49,6 +84,8 @@ class Lobby:
                 self._move_zone(1)
             elif event.key == pygame.K_h:
                 self._announce_controls()
+            elif event.key == pygame.K_s:
+                self._toggle_seat()
             elif event.key == pygame.K_RETURN and self.is_host:
                 print("Host is starting the game...")
                 self.game.sounds.play_ui("ui_select")
@@ -65,7 +102,10 @@ class Lobby:
             previous_zone = self.current_zone
             if len(self.players) != len(game_state["players"]):
                 self.players = game_state["players"]
-                player_names = ", ".join([f"{p.name} at {getattr(p, 'zone', 'Contestant Area')}" for p in self.players])
+                player_names = ", ".join([
+                    f"{p.name} {('seated' if getattr(p, 'seated', False) else 'standing')} at {getattr(p, 'zone', 'Contestant Area')}"
+                    for p in self.players
+                ])
                 accessibility.speak(f"Players in {self.lobby_name}: {player_names}")
             else:
                  self.players = game_state["players"]
@@ -73,6 +113,7 @@ class Lobby:
             for player in self.players:
                 if player.id == self.game.player_id:
                     self.current_zone = getattr(player, "zone", self.current_zone)
+                    self.is_seated = getattr(player, "seated", self.is_seated)
                     if self.current_zone in self.studio_zones:
                         self.zone_index = self.studio_zones.index(self.current_zone)
                     break
@@ -101,7 +142,8 @@ class Lobby:
         # Draw player list
         for index, player in enumerate(self.players):
             zone = getattr(player, "zone", "Contestant Area")
-            player_text = f"{player.name} - {zone}"
+            posture = "Seated" if getattr(player, "seated", False) else "Standing"
+            player_text = f"{player.name} - {posture} - {zone}"
             player_surface = font_main.render(player_text, True, colors["text"])
             player_rect = player_surface.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + index * 55))
             self.screen.blit(player_surface, player_rect)
@@ -123,5 +165,5 @@ class Lobby:
             inst_rect = inst_text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100))
             self.screen.blit(inst_text, inst_rect)
 
-        nav_text = font_small.render("Left/Right: Move set areas   H: Controls", True, colors["dim"])
+        nav_text = font_small.render("Left/Right: Move   S: Sit or Stand   H: Controls", True, colors["dim"])
         self.screen.blit(nav_text, (40, SCREEN_HEIGHT - 50))

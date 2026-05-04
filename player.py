@@ -7,6 +7,7 @@ class Player:
         self.id = id
         self.name = f"Player {id}"
         self.zone = "Contestant Area"
+        self.seated = False
 
     def __repr__(self):
         return f"Player({self.id}, {self.name})"

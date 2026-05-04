@@ -70,14 +70,21 @@ SOUND_FILES = {
     "theme": "theme.mp3",
     "walk_away": "walk_away.mp3",
     "lifeline": "lifeline.wav",
+
+    # UI and menu cues
     "ui_move": "ui_move.wav",
     "ui_select": "ui_select.wav",
     "ui_back": "ui_back.wav",
     "ui_error": "ui_error.wav",
     "ui_connect": "ui_connect.wav",
     "ui_disconnect": "ui_disconnect.wav",
-    "ui_step": "ui_step.wav",
-    "ui_arrive": "ui_arrive.wav",
+
+    # Studio movement cues (lobby set navigation)
+    "ui_leave": "leave.wav",
+    "ui_step": "step.wav",
+    "ui_arrive": "arrive.wav",
+    "ui_sit": "sitting.wav",
+    "ui_stand": "standing.wav",
 
     # --- PHONE A FRIEND ---
     "paf_call": "041 Phone a Friend - Call.flac",
@@ -137,6 +144,11 @@ SOUND_CATEGORIES = {
     "ui_error": "ui",
     "ui_connect": "ui",
     "ui_disconnect": "ui",
-    "ui_step": "ui",
-    "ui_arrive": "ui",
+
+    # Studio movement cues use their own category folder.
+    "ui_leave": "navigation",
+    "ui_step": "navigation",
+    "ui_arrive": "navigation",
+    "ui_sit": "navigation",
+    "ui_stand": "navigation",
 }

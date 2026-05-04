@@ -16,7 +16,8 @@ This guide helps hosts who are used to Roblox Studio or Virtual Paradise start h
 4. Start server.
 5. Confirm players are connected in the lobby list.
 6. Move around studio areas with Left and Right to verify your setup cues.
-7. Press Enter to start once everyone is ready.
+7. Use S to sit or stand when at contestant seating, hot seat, or host control panel.
+8. Press Enter to start once everyone is ready.
 
 ## During gameplay
 
@@ -37,6 +38,7 @@ This guide helps hosts who are used to Roblox Studio or Virtual Paradise start h
 Store new assets under:
 
 - assets/sounds/game for gameplay beds, stings, and reveal sounds
-- assets/sounds/ui for navigation, movement, and connection cues
+- assets/sounds/ui for menu navigation and connection cues
+- assets/sounds/navigation for lobby set movement cues such as leave, step, arrive, sitting, and standing
 
 Legacy sounds in the sounds folder still load, but new content should be added in assets/sounds.
