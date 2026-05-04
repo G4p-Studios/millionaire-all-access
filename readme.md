@@ -40,6 +40,7 @@ You can also open the in-game Host Quick Start screen from the main menu.
 - S: sit or stand when at a seat area
 - Enter or Space (at host control panel while standing): open host controls
 - Up and Down (inside host panel): navigate controls
+- Left and Right (inside host panel): switch between Show Controls and Flow/Presets pages
 - Enter or Space (inside host panel): activate selected control
 - H: repeat lobby controls
 - Enter (host only): start game
@@ -78,3 +79,10 @@ If a sound file is present in both places, the game prioritizes assets/sounds.
 ## Development note
 
 This project is focused on stable accessibility and host usability first. Additional visual presets, richer set customization, and more advanced movement logic are planned.
+
+## Host panel pages
+
+When open, the host control panel has two pages:
+
+- Show Controls: Lights, Music Bed, Sting, Start Game
+- Flow and Presets: Call-Up Target, Call Next Contestant, Setup Preset, Apply Setup Preset

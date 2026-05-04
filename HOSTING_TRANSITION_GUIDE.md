@@ -20,6 +20,11 @@ This guide helps hosts who are used to Roblox Studio or Virtual Paradise start h
 8. Stand at Host Control Panel and press Enter or Space to open host controls.
 9. Press Enter to start once everyone is ready.
 
+Use Left and Right while the panel is open to switch pages:
+
+- Show Controls page for lights, music bed, and stings
+- Flow and Presets page for call-up order and setup presets
+
 ## During gameplay
 
 - Read the question aloud or let built-in speech handle prompts.

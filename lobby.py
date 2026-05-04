@@ -26,19 +26,31 @@ class Lobby:
         self.is_seated = False
 
         self.host_panel_open = False
+        self.host_panel_page = 0
         self.host_panel_index = 0
         self.light_presets = ["Studio Blue", "Warm Spotlight", "Fastest Finger"]
         self.light_index = 0
         self.music_presets = ["Lobby Theme", "Question Bed", "Silence"]
         self.music_index = 0
-        self.host_panel_items = [
+        self.host_show_items = [
             "Lights",
             "Music Bed",
             "Play Sting",
-            "Call Up Contestant",
+            "Go To Flow Page",
             "Start Game",
             "Close Panel",
         ]
+        self.host_flow_items = [
+            "Call-Up Target",
+            "Call Next Contestant",
+            "Setup Preset",
+            "Apply Setup Preset",
+            "Back To Show Controls",
+            "Close Panel",
+        ]
+        self.setup_presets = ["Classic Live", "Fast Practice", "FFF Warmup"]
+        self.setup_index = 0
+        self.call_up_index = 0
 
         if self.is_host:
             accessibility.speak("Lobby created. Waiting for other players to join. Press Enter to start the game. Use left and right arrow keys to move around the set.")
@@ -103,6 +115,7 @@ class Lobby:
             return
 
         self.host_panel_open = True
+        self.host_panel_page = 0
         self.host_panel_index = 0
         self.game.sounds.play_ui("ui_panel", "ui_select")
         self._announce_host_panel_selection()
@@ -113,20 +126,63 @@ class Lobby:
         accessibility.speak("Closed host control panel.")
 
     def _announce_host_panel_selection(self):
-        item = self.host_panel_items[self.host_panel_index]
+        item = self._get_current_panel_items()[self.host_panel_index]
         detail = ""
         if item == "Lights":
             detail = self.light_presets[self.light_index]
         elif item == "Music Bed":
             detail = self.music_presets[self.music_index]
+        elif item == "Call-Up Target":
+            detail = self._get_current_call_target()
+        elif item == "Setup Preset":
+            detail = self.setup_presets[self.setup_index]
 
         announcement = item if not detail else f"{item}: {detail}"
         accessibility.speak(announcement)
 
     def _navigate_host_panel(self, direction):
-        self.host_panel_index = (self.host_panel_index + direction) % len(self.host_panel_items)
+        items = self._get_current_panel_items()
+        self.host_panel_index = (self.host_panel_index + direction) % len(items)
         self.game.sounds.play_ui("ui_move")
         self._announce_host_panel_selection()
+
+    def _get_current_panel_items(self):
+        return self.host_show_items if self.host_panel_page == 0 else self.host_flow_items
+
+    def _switch_panel_page(self, page):
+        self.host_panel_page = page
+        self.host_panel_index = 0
+        self.game.sounds.play_ui("ui_move")
+        title = "Show Controls" if page == 0 else "Flow And Presets"
+        accessibility.speak(title)
+        self._announce_host_panel_selection()
+
+    def _get_contestant_names(self):
+        names = [p.name for p in self.players if getattr(p, "id", -1) != 0]
+        return names
+
+    def _get_current_call_target(self):
+        contestants = self._get_contestant_names()
+        if not contestants:
+            return "No contestants"
+        self.call_up_index %= len(contestants)
+        return contestants[self.call_up_index]
+
+    def _apply_setup_preset(self):
+        preset = self.setup_presets[self.setup_index]
+
+        if preset == "Classic Live":
+            self.light_index = 0
+            self.music_index = 0
+        elif preset == "Fast Practice":
+            self.light_index = 1
+            self.music_index = 2
+        else:
+            self.light_index = 2
+            self.music_index = 0
+
+        self._apply_music_preset()
+        accessibility.speak(f"Applied preset {preset}.")
 
     def _apply_music_preset(self):
         preset = self.music_presets[self.music_index]
@@ -138,34 +194,70 @@ class Lobby:
             self.game.sounds.stop_music()
 
     def _activate_host_panel_item(self):
-        item = self.host_panel_items[self.host_panel_index]
+        item = self._get_current_panel_items()[self.host_panel_index]
         self.game.sounds.play_ui("ui_select")
 
-        if item == "Lights":
-            self.light_index = (self.light_index + 1) % len(self.light_presets)
-            accessibility.speak(f"Lights set to {self.light_presets[self.light_index]}.")
-        elif item == "Music Bed":
-            self.music_index = (self.music_index + 1) % len(self.music_presets)
-            self._apply_music_preset()
-            accessibility.speak(f"Music bed set to {self.music_presets[self.music_index]}.")
-        elif item == "Play Sting":
-            self.game.sounds.play("lifeline")
-            accessibility.speak("Played sting.")
-        elif item == "Call Up Contestant":
-            accessibility.speak("Calling next contestant to the hot seat.")
-        elif item == "Start Game":
-            accessibility.speak("Starting game.")
-            self.game.network.send("start")
-        elif item == "Close Panel":
-            self._close_host_panel()
+        if self.host_panel_page == 0:
+            if item == "Lights":
+                self.light_index = (self.light_index + 1) % len(self.light_presets)
+                accessibility.speak(f"Lights set to {self.light_presets[self.light_index]}.")
+            elif item == "Music Bed":
+                self.music_index = (self.music_index + 1) % len(self.music_presets)
+                self._apply_music_preset()
+                accessibility.speak(f"Music bed set to {self.music_presets[self.music_index]}.")
+            elif item == "Play Sting":
+                self.game.sounds.play("lifeline")
+                accessibility.speak("Played sting.")
+            elif item == "Go To Flow Page":
+                self._switch_panel_page(1)
+            elif item == "Start Game":
+                accessibility.speak("Starting game.")
+                self.game.network.send("start")
+            elif item == "Close Panel":
+                self._close_host_panel()
+        else:
+            if item == "Call-Up Target":
+                contestants = self._get_contestant_names()
+                if not contestants:
+                    accessibility.speak("No contestants are available.")
+                    self.game.sounds.play_ui("ui_error")
+                else:
+                    self.call_up_index = (self.call_up_index + 1) % len(contestants)
+                    accessibility.speak(f"Call-up target set to {contestants[self.call_up_index]}.")
+            elif item == "Call Next Contestant":
+                target = self._get_current_call_target()
+                if target == "No contestants":
+                    self.game.sounds.play_ui("ui_error")
+                    accessibility.speak("No contestants are available.")
+                else:
+                    accessibility.speak(f"Calling {target} to the hot seat.")
+            elif item == "Setup Preset":
+                self.setup_index = (self.setup_index + 1) % len(self.setup_presets)
+                accessibility.speak(f"Setup preset selected: {self.setup_presets[self.setup_index]}.")
+            elif item == "Apply Setup Preset":
+                self._apply_setup_preset()
+            elif item == "Back To Show Controls":
+                self._switch_panel_page(0)
+            elif item == "Close Panel":
+                self._close_host_panel()
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if self.host_panel_open:
+                if not self.is_host:
+                    self._close_host_panel()
+                    self.game.sounds.play_ui("ui_error")
+                    accessibility.speak("Only the host can use the control panel.")
+                    return
+
                 if event.key == pygame.K_UP:
                     self._navigate_host_panel(-1)
                 elif event.key == pygame.K_DOWN:
                     self._navigate_host_panel(1)
+                elif event.key == pygame.K_LEFT:
+                    self._switch_panel_page(0)
+                elif event.key == pygame.K_RIGHT:
+                    self._switch_panel_page(1)
                 elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                     self._activate_host_panel_item()
                 elif event.key == pygame.K_ESCAPE:
@@ -271,18 +363,27 @@ class Lobby:
             pygame.draw.rect(self.screen, colors["bg"], panel_rect, border_radius=12)
             pygame.draw.rect(self.screen, colors["highlight"], panel_rect, width=2, border_radius=12)
 
-            panel_title = font_small.render("Host Control Panel", True, colors["highlight"])
+            page_name = "Show Controls" if self.host_panel_page == 0 else "Flow And Presets"
+            panel_title = font_small.render(f"Host Control Panel - {page_name}", True, colors["highlight"])
             self.screen.blit(panel_title, (panel_rect.x + 16, panel_rect.y + 14))
 
             y = panel_rect.y + 70
-            for idx, item in enumerate(self.host_panel_items):
+            current_items = self._get_current_panel_items()
+            for idx, item in enumerate(current_items):
                 text = item
                 if item == "Lights":
                     text = f"Lights: {self.light_presets[self.light_index]}"
                 elif item == "Music Bed":
                     text = f"Music Bed: {self.music_presets[self.music_index]}"
+                elif item == "Call-Up Target":
+                    text = f"Call-Up Target: {self._get_current_call_target()}"
+                elif item == "Setup Preset":
+                    text = f"Setup Preset: {self.setup_presets[self.setup_index]}"
 
                 color = colors["highlight"] if idx == self.host_panel_index else colors["text"]
                 line = font_small.render(text, True, color)
                 self.screen.blit(line, (panel_rect.x + 16, y))
                 y += font_small.get_height() + 12
+
+            hint = font_small.render("Left/Right: Switch Page", True, colors["dim"])
+            self.screen.blit(hint, (panel_rect.x + 16, panel_rect.bottom - 36))
