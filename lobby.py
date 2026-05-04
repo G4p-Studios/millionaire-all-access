@@ -1,6 +1,8 @@
 # lobby.py
 
 import pygame
+import os
+import hashlib
 from settings import *
 import accessible_output as accessibility
 
@@ -52,6 +54,9 @@ class Lobby:
         self.setup_presets = ["Classic Live", "Fast Practice", "FFF Warmup"]
         self.setup_index = 0
         self.call_up_index = 0
+        self.asset_sync_ready = self.is_host
+        self.asset_sync_attempted = False
+        self.last_start_block_reason = ""
 
         if self.is_host:
             accessibility.speak("Lobby created. Waiting for other players to join. Press Enter to start the game. Use left and right arrow keys to move around the set.")
@@ -60,6 +65,9 @@ class Lobby:
 
         self.game.network.send({"action": "move_zone", "zone": self.current_zone})
         self.game.network.send({"action": "set_seated", "seated": False})
+
+        if self.is_host:
+            self._host_publish_session_assets()
 
     def _announce_zone(self):
         self.game.sounds.play_ui("ui_arrive", "ui_select")
@@ -169,6 +177,167 @@ class Lobby:
         self.call_up_index %= len(contestants)
         return contestants[self.call_up_index]
 
+    def _safe_lobby_slug(self):
+        allowed = []
+        for c in self.lobby_name:
+            if c.isalnum() or c in ("-", "_"):
+                allowed.append(c)
+            elif c.isspace():
+                allowed.append("_")
+        slug = "".join(allowed).strip("_")
+        return slug if slug else "session"
+
+    def _sha256_file(self, path):
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            while True:
+                block = f.read(65536)
+                if not block:
+                    break
+                h.update(block)
+        return h.hexdigest()
+
+    def _get_host_asset_source_dir(self):
+        configured = self.game.config.data.get("session_assets_dir", SESSION_SYNC_SOURCE_DIR)
+        if not isinstance(configured, str):
+            configured = SESSION_SYNC_SOURCE_DIR
+        source = configured.strip() or SESSION_SYNC_SOURCE_DIR
+        source = os.path.expandvars(os.path.expanduser(source))
+        return os.path.normpath(source)
+
+    def _collect_session_assets(self):
+        source = self._get_host_asset_source_dir()
+        manifest = []
+        files = {}
+
+        if not os.path.isdir(source):
+            return source, False, manifest, files
+
+        for root, _, names in os.walk(source):
+            for name in names:
+                ext = os.path.splitext(name)[1].lower()
+                if ext not in SESSION_SYNC_ALLOWED_EXTS:
+                    continue
+
+                abs_path = os.path.join(root, name)
+                rel_path = os.path.relpath(abs_path, source).replace("\\", "/")
+
+                with open(abs_path, "rb") as f:
+                    data = f.read()
+                digest = hashlib.sha256(data).hexdigest()
+
+                files[rel_path] = data
+                manifest.append({
+                    "name": rel_path,
+                    "sha256": digest,
+                    "size": len(data),
+                })
+
+        manifest.sort(key=lambda x: x["name"])
+        return source, True, manifest, files
+
+    def _host_publish_session_assets(self):
+        source, source_exists, manifest, files = self._collect_session_assets()
+        reply = self.game.network.send({"action": "asset_upload_manifest", "manifest": manifest})
+        if not reply or not reply.get("ok"):
+            accessibility.speak("Could not publish session assets.")
+            return
+
+        if not manifest:
+            self.game.network.send({"action": "asset_client_ready", "ready": True})
+            self.asset_sync_ready = True
+            if source_exists:
+                accessibility.speak(f"No custom session assets found in {source}.")
+            else:
+                accessibility.speak(f"Session asset folder not found: {source}.")
+            return
+
+        for entry in manifest:
+            name = entry["name"]
+            data = files[name]
+            upload_reply = self.game.network.send({
+                "action": "asset_upload_file",
+                "name": name,
+                "data": data,
+            })
+            if not upload_reply or not upload_reply.get("ok"):
+                accessibility.speak(f"Failed to upload session asset {name}.")
+                return
+
+        self.game.network.send({"action": "asset_client_ready", "ready": True})
+        self.asset_sync_ready = True
+        accessibility.speak(f"Published {len(manifest)} session assets from {source}.")
+
+    def _attempt_client_asset_sync(self):
+        manifest_reply = self.game.network.send({"action": "asset_get_manifest"})
+        if not manifest_reply or manifest_reply.get("type") != "asset_manifest":
+            return False
+
+        manifest = manifest_reply.get("manifest", [])
+        if not manifest:
+            self.game.network.send({"action": "asset_client_ready", "ready": True})
+            self.asset_sync_ready = True
+            return True
+
+        session_dir = os.path.join(SESSION_CACHE_DIR, self._safe_lobby_slug())
+        os.makedirs(session_dir, exist_ok=True)
+
+        for entry in manifest:
+            rel_name = entry.get("name", "")
+            expected_hash = entry.get("sha256", "")
+            if not rel_name:
+                continue
+
+            target_path = os.path.normpath(os.path.join(session_dir, rel_name))
+            target_root = os.path.normpath(session_dir)
+            if not target_path.startswith(target_root):
+                self.game.network.send({"action": "asset_client_ready", "ready": False})
+                accessibility.speak("Session asset path was invalid.")
+                return False
+
+            needs_download = True
+            if os.path.exists(target_path):
+                try:
+                    local_hash = self._sha256_file(target_path)
+                    needs_download = (local_hash != expected_hash)
+                except Exception:
+                    needs_download = True
+
+            if needs_download:
+                file_reply = self.game.network.send({"action": "asset_get_file", "name": rel_name})
+                if not file_reply or file_reply.get("type") != "asset_file" or not file_reply.get("ok"):
+                    self.game.network.send({"action": "asset_client_ready", "ready": False})
+                    accessibility.speak(f"Could not download required asset {rel_name}.")
+                    return False
+
+                data = file_reply.get("data", b"")
+                target_dir = os.path.dirname(target_path)
+                if target_dir:
+                    os.makedirs(target_dir, exist_ok=True)
+                with open(target_path, "wb") as f:
+                    f.write(data)
+
+                if expected_hash and self._sha256_file(target_path) != expected_hash:
+                    self.game.network.send({"action": "asset_client_ready", "ready": False})
+                    accessibility.speak(f"Downloaded asset did not match expected hash: {rel_name}.")
+                    return False
+
+        self.game.sounds.set_session_asset_root(session_dir)
+        self.game.network.send({"action": "asset_client_ready", "ready": True})
+        self.asset_sync_ready = True
+        accessibility.speak("Session assets synced and ready.")
+        return True
+
+    def _try_start_game(self):
+        self.game.sounds.play_ui("ui_select")
+        accessibility.speak("Starting game.")
+        reply = self.game.network.send("start")
+        if isinstance(reply, dict):
+            reason = reply.get("start_block_reason", "")
+            if reason:
+                self.game.sounds.play_ui("ui_error")
+                accessibility.speak(reason)
+
     def _apply_setup_preset(self):
         preset = self.setup_presets[self.setup_index]
 
@@ -212,8 +381,7 @@ class Lobby:
             elif item == "Go To Flow Page":
                 self._switch_panel_page(1)
             elif item == "Start Game":
-                accessibility.speak("Starting game.")
-                self.game.network.send("start")
+                self._try_start_game()
             elif item == "Close Panel":
                 self._close_host_panel()
         else:
@@ -287,9 +455,7 @@ class Lobby:
                 self._open_host_panel()
             elif event.key == pygame.K_RETURN and self.is_host:
                 print("Host is starting the game...")
-                self.game.sounds.play_ui("ui_select")
-                accessibility.speak("Starting game.")
-                self.game.network.send("start")
+                self._try_start_game()
             elif event.key == pygame.K_ESCAPE:
                 self.game.sounds.play_ui("ui_back")
                 self.game.end_session()
@@ -302,12 +468,23 @@ class Lobby:
             if len(self.players) != len(game_state["players"]):
                 self.players = game_state["players"]
                 player_names = ", ".join([
-                    f"{p.name} {('seated' if getattr(p, 'seated', False) else 'standing')} at {getattr(p, 'zone', 'Contestant Area')}"
+                    f"{p.name} {('seated' if getattr(p, 'seated', False) else 'standing')} {('ready' if getattr(p, 'asset_ready', False) else 'syncing')} at {getattr(p, 'zone', 'Contestant Area')}"
                     for p in self.players
                 ])
                 accessibility.speak(f"Players in {self.lobby_name}: {player_names}")
             else:
                  self.players = game_state["players"]
+
+            if not self.is_host and not self.asset_sync_ready and not self.asset_sync_attempted:
+                self.asset_sync_attempted = True
+                self._attempt_client_asset_sync()
+
+            reason = game_state.get("start_block_reason", "")
+            if self.is_host and reason and reason != self.last_start_block_reason:
+                self.last_start_block_reason = reason
+                accessibility.speak(reason)
+            elif self.is_host and not reason:
+                self.last_start_block_reason = ""
 
             for player in self.players:
                 if player.id == self.game.player_id:
@@ -342,7 +519,8 @@ class Lobby:
         for index, player in enumerate(self.players):
             zone = getattr(player, "zone", "Contestant Area")
             posture = "Seated" if getattr(player, "seated", False) else "Standing"
-            player_text = f"{player.name} - {posture} - {zone}"
+            sync_state = "Ready" if getattr(player, "asset_ready", False) else "Syncing"
+            player_text = f"{player.name} - {sync_state} - {posture} - {zone}"
             player_surface = font_main.render(player_text, True, colors["text"])
             player_rect = player_surface.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + index * 55))
             self.screen.blit(player_surface, player_rect)

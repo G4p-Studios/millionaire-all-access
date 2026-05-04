@@ -25,6 +25,11 @@ BASE_FONT_HUGE = 100
 FPS = 60
 SERVER_PORT = 50550
 LOBBY_SPY_URL = "http://lobbies.seedy.cc:1945/lobbies"
+SESSION_SYNC_SOURCE_DIR = "assets/session_sync"
+SESSION_CACHE_DIR = "temp_assets"
+SESSION_SYNC_ALLOWED_EXTS = [
+    ".wav", ".mp3", ".flac", ".ogg", ".png", ".jpg", ".jpeg", ".json"
+]
 
 SOUND_SEARCH_PATHS = [
     "assets/sounds",

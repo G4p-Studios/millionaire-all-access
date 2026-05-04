@@ -3,6 +3,7 @@
 import socket
 from _thread import *
 import pickle
+import struct
 from player import Player
 import sys
 import threading
@@ -46,8 +47,13 @@ game_state = {
     "players": [],
     "game_started": False,
     "lobby_name": lobby_name,
-    "host_name": host_name
+    "host_name": host_name,
+    "asset_manifest": [],
+    "start_block_reason": ""
 }
+
+session_assets = {}
+session_manifest = []
 
 id_counter = 1
 id_lock = threading.Lock()
@@ -71,16 +77,41 @@ def register_lobby():
 
 if is_public: start_new_thread(register_lobby, ())
 
+def send_packet(conn, obj):
+    payload = pickle.dumps(obj)
+    header = struct.pack("!I", len(payload))
+    conn.sendall(header + payload)
+
+def recv_exact(conn, size):
+    chunks = []
+    received = 0
+    while received < size:
+        chunk = conn.recv(size - received)
+        if not chunk:
+            return None
+        chunks.append(chunk)
+        received += len(chunk)
+    return b"".join(chunks)
+
+def recv_packet(conn):
+    header = recv_exact(conn, 4)
+    if not header:
+        return None
+    payload_len = struct.unpack("!I", header)[0]
+    payload = recv_exact(conn, payload_len)
+    if payload is None:
+        return None
+    return pickle.loads(payload)
+
 def threaded_client(conn):
-    global id_counter, game_state
+    global id_counter, game_state, session_assets, session_manifest
     
     # --- HANDSHAKE: Receive Name ---
     try:
-        name_data = conn.recv(4096)
-        if not name_data:
+        player_name = recv_packet(conn)
+        if not player_name:
             conn.close()
             return
-        player_name = pickle.loads(name_data)
     except Exception as e:
         print(f"Handshake error: {e}")
         conn.close()
@@ -103,22 +134,31 @@ def threaded_client(conn):
 
     player_object = Player(player_id)
     player_object.name = player_name
+    player_object.asset_ready = (player_id == 0 or len(session_manifest) == 0)
     
     with game_state_lock:
         game_state["players"].append(player_object)
+        game_state["asset_manifest"] = session_manifest
 
-    conn.send(pickle.dumps(player_object))
+    send_packet(conn, player_object)
 
     # Main Loop
     while True:
         try:
-            data = conn.recv(2048)
-            if not data: break
-            command = pickle.loads(data)
+            command = recv_packet(conn)
+            if command is None:
+                break
 
             with game_state_lock:
+                reply = game_state
                 if command == "start" and player_id == 0:
-                    game_state["game_started"] = True
+                    non_hosts = [p for p in game_state["players"] if p.id != 0]
+                    waiting = [p.name for p in non_hosts if not getattr(p, "asset_ready", False)]
+                    if waiting:
+                        game_state["start_block_reason"] = f"Waiting for asset sync: {', '.join(waiting)}"
+                    else:
+                        game_state["start_block_reason"] = ""
+                        game_state["game_started"] = True
                 elif isinstance(command, dict) and command.get("action") == "move_zone":
                     zone_name = command.get("zone")
                     for player in game_state["players"]:
@@ -142,9 +182,50 @@ def threaded_client(conn):
                             player.zone = "Hot Seat"
                             player.seated = True
                             break
-                reply = game_state
+                elif (
+                    isinstance(command, dict)
+                    and command.get("action") == "asset_upload_manifest"
+                    and player_id == 0
+                ):
+                    session_manifest = command.get("manifest", [])
+                    session_assets = {}
+                    game_state["asset_manifest"] = session_manifest
+                    game_state["start_block_reason"] = ""
+                    for player in game_state["players"]:
+                        player.asset_ready = (player.id == 0 or len(session_manifest) == 0)
+                    reply = {"ok": True, "manifest_count": len(session_manifest)}
+                elif (
+                    isinstance(command, dict)
+                    and command.get("action") == "asset_upload_file"
+                    and player_id == 0
+                ):
+                    name = command.get("name", "")
+                    data = command.get("data", b"")
+                    if isinstance(name, str) and isinstance(data, (bytes, bytearray)):
+                        session_assets[name] = bytes(data)
+                        reply = {"ok": True, "name": name}
+                    else:
+                        reply = {"ok": False, "error": "invalid_file_payload"}
+                elif isinstance(command, dict) and command.get("action") == "asset_get_manifest":
+                    reply = {"type": "asset_manifest", "manifest": session_manifest}
+                elif isinstance(command, dict) and command.get("action") == "asset_get_file":
+                    name = command.get("name", "")
+                    data = session_assets.get(name)
+                    if data is None:
+                        reply = {"type": "asset_file", "ok": False, "name": name}
+                    else:
+                        reply = {"type": "asset_file", "ok": True, "name": name, "data": data}
+                elif isinstance(command, dict) and command.get("action") == "asset_client_ready":
+                    is_ready = bool(command.get("ready", False))
+                    for player in game_state["players"]:
+                        if player.id == player_id:
+                            player.asset_ready = is_ready
+                            break
+                    reply = {"ok": True, "ready": is_ready}
+                elif command == "get":
+                    reply = game_state
             
-            conn.sendall(pickle.dumps(reply))
+            send_packet(conn, reply)
         except (pickle.UnpicklingError, ConnectionResetError, EOFError):
             break
         except Exception as e:
@@ -157,6 +238,10 @@ def threaded_client(conn):
         if player_id == 0:
             print("Host disconnected. Resetting state.")
             game_state["game_started"] = False
+            game_state["asset_manifest"] = []
+            game_state["start_block_reason"] = ""
+            session_manifest = []
+            session_assets = {}
     conn.close()
 
 while True:

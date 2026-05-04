@@ -2,6 +2,7 @@
 
 import socket
 import pickle
+import struct
 
 class Network:
     def __init__(self, server_ip, server_port):
@@ -19,20 +20,42 @@ class Network:
             self.client.settimeout(5.0)
             self.client.connect(self.addr)
             
-            # --- HANDSHAKE ---
-            # Send the player name immediately
-            self.client.send(pickle.dumps(player_name))
-            
-            # Receive the assigned Player object
-            return pickle.loads(self.client.recv(4096))
+            self._send_packet(player_name)
+            return self._recv_packet()
         except socket.error as e:
             print(f"Connection Error: {e}")
             return None
 
     def send(self, data):
         try:
-            self.client.send(pickle.dumps(data))
-            return pickle.loads(self.client.recv(4096))
+            self._send_packet(data)
+            return self._recv_packet()
         except socket.error as e:
             print(f"Send/Receive Error: {e}")
             return None
+
+    def _send_packet(self, obj):
+        payload = pickle.dumps(obj)
+        header = struct.pack("!I", len(payload))
+        self.client.sendall(header + payload)
+
+    def _recv_packet(self):
+        header = self._recv_exact(4)
+        if not header:
+            return None
+        payload_len = struct.unpack("!I", header)[0]
+        payload = self._recv_exact(payload_len)
+        if payload is None:
+            return None
+        return pickle.loads(payload)
+
+    def _recv_exact(self, size):
+        chunks = []
+        received = 0
+        while received < size:
+            chunk = self.client.recv(size - received)
+            if not chunk:
+                return None
+            chunks.append(chunk)
+            received += len(chunk)
+        return b"".join(chunks)

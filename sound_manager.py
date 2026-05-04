@@ -16,14 +16,23 @@ class SoundManager:
 
         self.sounds = {}
         self.music_channel = None
+        self.session_asset_root = None
         self.load_sounds()
 
     def load_sounds(self):
         if not self.enabled: return
 
+        self.sounds = {}
+
         for root in SOUND_SEARCH_PATHS:
             try:
                 os.makedirs(root, exist_ok=True)
+            except Exception:
+                pass
+
+        if self.session_asset_root:
+            try:
+                os.makedirs(self.session_asset_root, exist_ok=True)
             except Exception:
                 pass
 
@@ -41,6 +50,11 @@ class SoundManager:
         category = SOUND_CATEGORIES.get(key)
         candidates = []
 
+        if self.session_asset_root:
+            if category:
+                candidates.append(os.path.join(self.session_asset_root, category, filename))
+            candidates.append(os.path.join(self.session_asset_root, filename))
+
         for root in SOUND_SEARCH_PATHS:
             if category:
                 candidates.append(os.path.join(root, category, filename))
@@ -51,6 +65,10 @@ class SoundManager:
                 return path
 
         return None
+
+    def set_session_asset_root(self, path):
+        self.session_asset_root = path
+        self.load_sounds()
 
     def play(self, key, loops=0):
         if not self.enabled: return

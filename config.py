@@ -17,6 +17,7 @@ class Config:
             "fullscreen": False,
             "font_scale": "Normal",
             "lobby_spy_url": LOBBY_SPY_URL,
+            "session_assets_dir": SESSION_SYNC_SOURCE_DIR,
             "currency": "GBP" # Default to Pounds
         }
         self.fonts = {}

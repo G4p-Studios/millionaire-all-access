@@ -12,13 +12,19 @@ This guide helps hosts who are used to Roblox Studio or Virtual Paradise start h
 
 1. Open the game and select Host Game.
 2. Choose your lobby name and port.
-3. Set Public if you want your lobby listed by the lobby service.
-4. Start server.
-5. Confirm players are connected in the lobby list.
-6. Move around studio areas with Left and Right to verify your setup cues.
-7. Use S to sit or stand when at contestant seating, hot seat, or host control panel.
-8. Stand at Host Control Panel and press Enter or Space to open host controls.
-9. Press Enter to start once everyone is ready.
+3. Set Session Assets Folder to the folder that contains your custom sounds and images.
+4. Set Public if you want your lobby listed by the lobby service.
+5. Start server.
+6. Confirm players are connected in the lobby list.
+7. Move around studio areas with Left and Right to verify your setup cues.
+8. Use S to sit or stand when at contestant seating, hot seat, or host control panel.
+9. Stand at Host Control Panel and press Enter or Space to open host controls.
+10. Press Enter to start once everyone is ready.
+
+The lobby publishes assets automatically from Session Assets Folder when the host joins.
+If Session Assets Folder is blank, it falls back to assets/session_sync.
+Players sync them into temp_assets/<lobby_name> and show as Ready when complete.
+Game start is blocked until all connected non-host players are Ready.
 
 Use Left and Right while the panel is open to switch pages:
 

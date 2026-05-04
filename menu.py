@@ -5,6 +5,12 @@ import subprocess
 import sys
 import urllib.request
 import json
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+except Exception:
+    tk = None
+    filedialog = None
 from settings import *
 import accessible_output as accessibility
 
@@ -20,6 +26,7 @@ class Menu:
             "Lobby Name": "My Game",
             "Port": str(SERVER_PORT),
             "Host Name": self.game.config.data["player_name"],
+            "Session Assets Folder": self.game.config.data.get("session_assets_dir", SESSION_SYNC_SOURCE_DIR),
             "Public": False
         }
         
@@ -38,7 +45,7 @@ class Menu:
 
         self.items = {
             "MAIN": ["Host Game", "Join Game", "Host Quick Start", "Settings", "Quit"],
-            "HOST_CONFIG": ["Lobby Name", "Port", "Host Name", "Public", "Start Server", "Back"],
+            "HOST_CONFIG": ["Lobby Name", "Port", "Host Name", "Session Assets Folder", "Use Default Session Folder", "Public", "Start Server", "Back"],
             "JOIN_SELECT": ["Join Private Lobby", "Join Public Lobby", "Back"],
             "JOIN_PRIVATE": ["Player Name", "IP Address", "Port", "Connect", "Back"],
             "JOIN_PUBLIC": ["Player Name", "Refresh", "Back"],
@@ -90,6 +97,13 @@ class Menu:
                 control_type = "edit text"
                 value_text = self.host_config.get(item_text, "")
                 help_text = "Press Enter to type"
+            elif item_text == "Session Assets Folder":
+                control_type = "folder picker"
+                value_text = self.host_config.get(item_text, "")
+                help_text = "Press Enter to browse"
+            elif item_text == "Use Default Session Folder":
+                control_type = "button"
+                help_text = "Press Enter to reset folder path"
             elif item_text == "Public":
                 control_type = "checkbox"
                 state = self.host_config.get("Public", False)
@@ -166,6 +180,11 @@ class Menu:
             self.stop_editing()
             if self.state == "HOST_CONFIG" and key == "Host Name":
                 self.game.config.data["player_name"] = current_val
+                self.game.config.save()
+            elif self.state == "HOST_CONFIG" and key == "Session Assets Folder":
+                folder = current_val.strip() if current_val.strip() else SESSION_SYNC_SOURCE_DIR
+                target_dict[key] = folder
+                self.game.config.data["session_assets_dir"] = folder
                 self.game.config.save()
             elif self.state == "JOIN_PRIVATE" and key == "Player Name":
                 self.game.config.data["player_name"] = current_val
@@ -317,6 +336,13 @@ class Menu:
         elif self.state == "HOST_CONFIG":
             if selection in ["Lobby Name", "Port", "Host Name"]:
                 self.start_editing()
+            elif selection == "Session Assets Folder":
+                self.pick_session_assets_folder()
+            elif selection == "Use Default Session Folder":
+                self.host_config["Session Assets Folder"] = SESSION_SYNC_SOURCE_DIR
+                self.game.config.data["session_assets_dir"] = SESSION_SYNC_SOURCE_DIR
+                self.game.config.save()
+                accessibility.speak(f"Session assets folder reset to default: {SESSION_SYNC_SOURCE_DIR}.")
             elif selection == "Public":
                 self.host_config["Public"] = not self.host_config["Public"]
                 state = "Checked" if self.host_config["Public"] else "Unchecked"
@@ -364,6 +390,38 @@ class Menu:
             self.game.sounds.play_ui("ui_select")
             accessibility.speak(f"Editing {key}. Type now.")
 
+    def pick_session_assets_folder(self):
+        if filedialog is None or tk is None:
+            accessibility.speak("Folder picker is not available. Type the path manually in config.json.")
+            self.game.sounds.play_ui("ui_error")
+            return
+
+        current = self.host_config.get("Session Assets Folder", "")
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            selected = filedialog.askdirectory(
+                title="Select Session Assets Folder",
+                initialdir=current if current else SESSION_SYNC_SOURCE_DIR,
+                parent=root,
+                mustexist=True,
+            )
+            root.destroy()
+        except Exception:
+            self.game.sounds.play_ui("ui_error")
+            accessibility.speak("Could not open folder picker.")
+            return
+
+        if not selected:
+            accessibility.speak("Folder selection cancelled.")
+            return
+
+        self.host_config["Session Assets Folder"] = selected
+        self.game.config.data["session_assets_dir"] = selected
+        self.game.config.save()
+        accessibility.speak(f"Session assets folder set to {selected}.")
+
     def stop_editing(self):
         self.editing = False
         self.selection_anchor = None
@@ -385,6 +443,10 @@ class Menu:
             port = self.host_config["Port"]
             name = self.host_config["Lobby Name"]
             host = self.host_config["Host Name"]
+            session_assets_dir = self.host_config["Session Assets Folder"].strip() or SESSION_SYNC_SOURCE_DIR
+            self.host_config["Session Assets Folder"] = session_assets_dir
+            self.game.config.data["session_assets_dir"] = session_assets_dir
+            self.game.config.save()
             is_public = "1" if self.host_config["Public"] else "0"
             spy_url = self.game.config.data["lobby_spy_url"]
             try: int(port)
@@ -546,12 +608,13 @@ class Menu:
 
         if self.state == "HOST_QUICKSTART":
             instructions = [
-                "1. Host Game: set lobby name and port, then Start Server.",
-                "2. Press Enter in lobby to start once players are ready.",
-                "3. In lobby use Left and Right to move around the studio.",
-                "4. Use A, B, C, D for answers. Press R to repeat question.",
-                "5. Use W to walk away. Host presses Enter to reveal lock-ins.",
-                "6. Press Escape any time to return to menu from lobby."
+                "1. Host Game: set lobby name, port, and Session Assets Folder.",
+                "2. Select Start Server and wait for players to join.",
+                "3. Press Enter in lobby to start once players are ready.",
+                "4. In lobby use Left and Right to move around the studio.",
+                "5. Use A, B, C, D for answers. Press R to repeat question.",
+                "6. Use W to walk away. Host presses Enter to reveal lock-ins.",
+                "7. Press Escape any time to return to menu from lobby."
             ]
             top = 170
             for line in instructions:

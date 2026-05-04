@@ -76,6 +76,27 @@ Legacy fallback is still supported:
 
 If a sound file is present in both places, the game prioritizes assets/sounds.
 
+## Session asset sync (Phase 1)
+
+The lobby now supports Roblox and VP style session asset sync.
+
+- Host source folder: set in Host Game as Session Assets Folder
+- Default source folder: assets/session_sync
+- Allowed file types: wav, mp3, flac, ogg, png, jpg, jpeg, json
+- Client cache folder: temp_assets/<lobby_name>
+
+How it works:
+
+1. Host selects Session Assets Folder in Host Game, then enters the lobby.
+2. Host client publishes a manifest plus file payloads from that selected folder.
+3. Joining players request the manifest and download missing or changed files.
+4. Players mark themselves ready after sync completes.
+5. Host start is blocked until all connected non-host players are ready.
+
+If Session Assets Folder is left blank, the game falls back to assets/session_sync.
+
+Lobby player list now includes Syncing or Ready state.
+
 ## Development note
 
 This project is focused on stable accessibility and host usability first. Additional visual presets, richer set customization, and more advanced movement logic are planned.
