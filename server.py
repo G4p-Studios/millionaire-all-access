@@ -4,13 +4,14 @@ import socket
 from _thread import *
 import pickle
 import struct
+import hashlib
 from player import Player
 import sys
 import threading
 import urllib.request
 import json
 import time
-from settings import LOBBY_SPY_URL as DEFAULT_SPY_URL
+from settings import LOBBY_SPY_URL as DEFAULT_SPY_URL, SESSION_SYNC_CHUNK_SIZE
 
 # Default Configuration
 server_port = 50550
@@ -49,11 +50,13 @@ game_state = {
     "lobby_name": lobby_name,
     "host_name": host_name,
     "asset_manifest": [],
+    "asset_revision": 0,
     "start_block_reason": ""
 }
 
 session_assets = {}
 session_manifest = []
+session_uploads = {}
 
 id_counter = 1
 id_lock = threading.Lock()
@@ -104,7 +107,7 @@ def recv_packet(conn):
     return pickle.loads(payload)
 
 def threaded_client(conn):
-    global id_counter, game_state, session_assets, session_manifest
+    global id_counter, game_state, session_assets, session_manifest, session_uploads
     
     # --- HANDSHAKE: Receive Name ---
     try:
@@ -189,39 +192,143 @@ def threaded_client(conn):
                 ):
                     session_manifest = command.get("manifest", [])
                     session_assets = {}
+                    session_uploads = {}
                     game_state["asset_manifest"] = session_manifest
+                    game_state["asset_revision"] += 1
                     game_state["start_block_reason"] = ""
                     for player in game_state["players"]:
                         player.asset_ready = (player.id == 0 or len(session_manifest) == 0)
-                    reply = {"ok": True, "manifest_count": len(session_manifest)}
+                    reply = {
+                        "ok": True,
+                        "manifest_count": len(session_manifest),
+                        "asset_revision": game_state["asset_revision"],
+                    }
                 elif (
                     isinstance(command, dict)
-                    and command.get("action") == "asset_upload_file"
+                    and command.get("action") == "asset_upload_begin"
                     and player_id == 0
                 ):
                     name = command.get("name", "")
-                    data = command.get("data", b"")
-                    if isinstance(name, str) and isinstance(data, (bytes, bytearray)):
-                        session_assets[name] = bytes(data)
-                        reply = {"ok": True, "name": name}
+                    size = command.get("size", -1)
+                    sha256 = command.get("sha256", "")
+                    if isinstance(name, str) and isinstance(size, int) and size >= 0 and isinstance(sha256, str):
+                        existing = session_uploads.get(name)
+                        if (
+                            existing
+                            and existing.get("size") == size
+                            and existing.get("sha256") == sha256
+                        ):
+                            offset = len(existing.get("data", bytearray()))
+                        else:
+                            session_uploads[name] = {
+                                "size": size,
+                                "sha256": sha256,
+                                "data": bytearray(),
+                            }
+                            offset = 0
+                        reply = {"ok": True, "name": name, "offset": offset}
                     else:
-                        reply = {"ok": False, "error": "invalid_file_payload"}
-                elif isinstance(command, dict) and command.get("action") == "asset_get_manifest":
-                    reply = {"type": "asset_manifest", "manifest": session_manifest}
-                elif isinstance(command, dict) and command.get("action") == "asset_get_file":
+                        reply = {"ok": False, "error": "invalid_upload_begin"}
+                elif (
+                    isinstance(command, dict)
+                    and command.get("action") == "asset_upload_chunk"
+                    and player_id == 0
+                ):
                     name = command.get("name", "")
+                    offset = command.get("offset", -1)
+                    data = command.get("data", b"")
+                    upload = session_uploads.get(name)
+                    if not upload:
+                        reply = {"ok": False, "error": "no_upload_session", "name": name}
+                    elif not isinstance(offset, int):
+                        reply = {"ok": False, "error": "invalid_offset", "name": name}
+                    elif not isinstance(data, (bytes, bytearray)):
+                        reply = {"ok": False, "error": "invalid_chunk_payload", "name": name}
+                    else:
+                        expected = len(upload["data"])
+                        if offset != expected:
+                            reply = {
+                                "ok": False,
+                                "error": "offset_mismatch",
+                                "name": name,
+                                "expected_offset": expected,
+                            }
+                        else:
+                            upload["data"].extend(bytes(data))
+                            if len(upload["data"]) > upload["size"]:
+                                session_uploads.pop(name, None)
+                                reply = {"ok": False, "error": "upload_too_large", "name": name}
+                            elif len(upload["data"]) == upload["size"]:
+                                digest = hashlib.sha256(upload["data"]).hexdigest()
+                                if upload["sha256"] and digest != upload["sha256"]:
+                                    session_uploads.pop(name, None)
+                                    reply = {"ok": False, "error": "hash_mismatch", "name": name}
+                                else:
+                                    session_assets[name] = bytes(upload["data"])
+                                    session_uploads.pop(name, None)
+                                    reply = {
+                                        "ok": True,
+                                        "name": name,
+                                        "next_offset": len(session_assets[name]),
+                                        "complete": True,
+                                    }
+                            else:
+                                reply = {
+                                    "ok": True,
+                                    "name": name,
+                                    "next_offset": len(upload["data"]),
+                                    "complete": False,
+                                }
+                elif isinstance(command, dict) and command.get("action") == "asset_get_manifest":
+                    reply = {
+                        "type": "asset_manifest",
+                        "manifest": session_manifest,
+                        "revision": game_state.get("asset_revision", 0),
+                        "chunk_size": SESSION_SYNC_CHUNK_SIZE,
+                    }
+                elif isinstance(command, dict) and command.get("action") == "asset_get_file_chunk":
+                    name = command.get("name", "")
+                    offset = command.get("offset", -1)
+                    length = command.get("length", 65536)
                     data = session_assets.get(name)
                     if data is None:
-                        reply = {"type": "asset_file", "ok": False, "name": name}
+                        reply = {"type": "asset_file_chunk", "ok": False, "name": name, "error": "not_found"}
+                    elif not isinstance(offset, int) or offset < 0 or offset > len(data):
+                        reply = {
+                            "type": "asset_file_chunk",
+                            "ok": False,
+                            "name": name,
+                            "error": "offset_mismatch",
+                            "expected_offset": len(data) if isinstance(offset, int) and offset > len(data) else 0,
+                        }
                     else:
-                        reply = {"type": "asset_file", "ok": True, "name": name, "data": data}
+                        if not isinstance(length, int) or length <= 0:
+                            length = SESSION_SYNC_CHUNK_SIZE
+                        length = min(length, SESSION_SYNC_CHUNK_SIZE)
+                        chunk = data[offset:offset + length]
+                        next_offset = offset + len(chunk)
+                        reply = {
+                            "type": "asset_file_chunk",
+                            "ok": True,
+                            "name": name,
+                            "offset": offset,
+                            "next_offset": next_offset,
+                            "eof": next_offset >= len(data),
+                            "data": chunk,
+                        }
                 elif isinstance(command, dict) and command.get("action") == "asset_client_ready":
                     is_ready = bool(command.get("ready", False))
+                    revision = int(command.get("revision", -1))
                     for player in game_state["players"]:
                         if player.id == player_id:
-                            player.asset_ready = is_ready
+                            player.asset_ready = is_ready and revision == game_state.get("asset_revision", 0)
                             break
-                    reply = {"ok": True, "ready": is_ready}
+                    reply = {
+                        "ok": True,
+                        "ready": is_ready,
+                        "accepted": revision == game_state.get("asset_revision", 0),
+                        "asset_revision": game_state.get("asset_revision", 0),
+                    }
                 elif command == "get":
                     reply = game_state
             
@@ -239,9 +346,11 @@ def threaded_client(conn):
             print("Host disconnected. Resetting state.")
             game_state["game_started"] = False
             game_state["asset_manifest"] = []
+            game_state["asset_revision"] = 0
             game_state["start_block_reason"] = ""
             session_manifest = []
             session_assets = {}
+            session_uploads = {}
     conn.close()
 
 while True:

@@ -23,12 +23,14 @@ This guide helps hosts who are used to Roblox Studio or Virtual Paradise start h
 
 The lobby publishes assets automatically from Session Assets Folder when the host joins.
 If Session Assets Folder is blank, it falls back to assets/session_sync.
+Transfers are chunked and resumable for both host upload and player download.
 Players sync them into temp_assets/<lobby_name> and show as Ready when complete.
 Game start is blocked until all connected non-host players are Ready.
 
 Use Left and Right while the panel is open to switch pages:
 
 - Show Controls page for lights, music bed, and stings
+- Show Controls page includes Refresh Session Assets to republish changes mid-lobby
 - Flow and Presets page for call-up order, explicit Move Target To Hot Seat, and setup presets
 
 ## During gameplay

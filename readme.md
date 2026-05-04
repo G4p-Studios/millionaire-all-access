@@ -88,10 +88,12 @@ The lobby now supports Roblox and VP style session asset sync.
 How it works:
 
 1. Host selects Session Assets Folder in Host Game, then enters the lobby.
-2. Host client publishes a manifest plus file payloads from that selected folder.
-3. Joining players request the manifest and download missing or changed files.
+2. Host client publishes a manifest, then uploads each file in chunks with resume by offset.
+3. Joining players download missing or changed files in chunks and resume from partial .part files.
 4. Players mark themselves ready after sync completes.
 5. Host start is blocked until all connected non-host players are ready.
+
+The host can republish at any time using Refresh Session Assets in the host control panel.
 
 If Session Assets Folder is left blank, the game falls back to assets/session_sync.
 
@@ -105,5 +107,5 @@ This project is focused on stable accessibility and host usability first. Additi
 
 When open, the host control panel has two pages:
 
-- Show Controls: Lights, Music Bed, Sting, Start Game
+- Show Controls: Lights, Music Bed, Sting, Refresh Session Assets, Start Game
 - Flow and Presets: Call-Up Target, Call Next Contestant, Move Target To Hot Seat, Setup Preset, Apply Setup Preset
