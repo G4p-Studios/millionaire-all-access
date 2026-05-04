@@ -43,6 +43,7 @@ class Lobby:
         self.host_flow_items = [
             "Call-Up Target",
             "Call Next Contestant",
+            "Move Target To Hot Seat",
             "Setup Preset",
             "Apply Setup Preset",
             "Back To Show Controls",
@@ -231,6 +232,14 @@ class Lobby:
                     accessibility.speak("No contestants are available.")
                 else:
                     accessibility.speak(f"Calling {target} to the hot seat.")
+            elif item == "Move Target To Hot Seat":
+                target = self._get_current_call_target()
+                if target == "No contestants":
+                    self.game.sounds.play_ui("ui_error")
+                    accessibility.speak("No contestants are available.")
+                else:
+                    self.game.network.send({"action": "move_target_hot_seat", "target_name": target})
+                    accessibility.speak(f"Moved {target} to the hot seat.")
             elif item == "Setup Preset":
                 self.setup_index = (self.setup_index + 1) % len(self.setup_presets)
                 accessibility.speak(f"Setup preset selected: {self.setup_presets[self.setup_index]}.")

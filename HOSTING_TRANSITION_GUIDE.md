@@ -23,7 +23,7 @@ This guide helps hosts who are used to Roblox Studio or Virtual Paradise start h
 Use Left and Right while the panel is open to switch pages:
 
 - Show Controls page for lights, music bed, and stings
-- Flow and Presets page for call-up order and setup presets
+- Flow and Presets page for call-up order, explicit Move Target To Hot Seat, and setup presets
 
 ## During gameplay
 

@@ -131,6 +131,17 @@ def threaded_client(conn):
                         if player.id == player_id:
                             player.seated = seated
                             break
+                elif (
+                    isinstance(command, dict)
+                    and command.get("action") == "move_target_hot_seat"
+                    and player_id == 0
+                ):
+                    target_name = command.get("target_name", "")
+                    for player in game_state["players"]:
+                        if player.id != 0 and player.name == target_name:
+                            player.zone = "Hot Seat"
+                            player.seated = True
+                            break
                 reply = game_state
             
             conn.sendall(pickle.dumps(reply))

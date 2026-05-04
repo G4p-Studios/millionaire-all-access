@@ -85,4 +85,4 @@ This project is focused on stable accessibility and host usability first. Additi
 When open, the host control panel has two pages:
 
 - Show Controls: Lights, Music Bed, Sting, Start Game
-- Flow and Presets: Call-Up Target, Call Next Contestant, Setup Preset, Apply Setup Preset
+- Flow and Presets: Call-Up Target, Call Next Contestant, Move Target To Hot Seat, Setup Preset, Apply Setup Preset
