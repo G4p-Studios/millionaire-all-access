@@ -188,7 +188,7 @@ class Lobby:
         accessibility.speak(" ".join(parts))
 
         if self._can_open_host_panel():
-            self.game.sounds.play_ui_panned("ui_panel", 0.8, "ui_select")
+            self.game.sounds.play_ui_panned("ui_panel", self._panel_proximity_pan(), "ui_select")
             accessibility.speak("Host control panel. Press Enter or Space to interact with controls.")
 
     def _get_exit_summary(self, zone):
@@ -254,6 +254,21 @@ class Lobby:
         spoken = "; ".join(text for _, text in cues[:2])
         return f"Proximity: {spoken}."
 
+    def _direction_to_pan(self, direction):
+        pan_map = {
+            "left": -0.8,
+            "right": 0.8,
+            "up": 0.0,
+            "down": 0.0,
+        }
+        return pan_map.get(direction, 0.0)
+
+    def _panel_proximity_pan(self):
+        path = self._shortest_path_directions(self.current_zone, "Host Control Panel")
+        if not path:
+            return 0.0
+        return self._direction_to_pan(path[0])
+
     def _move_direction(self, direction):
         neighbors = self.studio_graph.get(self.current_zone, {})
         next_zone = neighbors.get(direction)
@@ -262,13 +277,7 @@ class Lobby:
             accessibility.speak(f"No path {direction} from {self.current_zone}.")
             return
 
-        pan_map = {
-            "left": -0.8,
-            "right": 0.8,
-            "up": 0.0,
-            "down": 0.0,
-        }
-        pan = pan_map.get(direction, 0.0)
+        pan = self._direction_to_pan(direction)
 
         if self.is_seated:
             self._set_seated(False, announce=True)
