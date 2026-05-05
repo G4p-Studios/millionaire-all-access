@@ -29,6 +29,8 @@ Sync retries automatically with short backoff on transient network issues.
 Files over 100 MB are skipped from session sync.
 Players sync them into temp_assets/<lobby_name> and show as Ready when complete.
 Game start is blocked until all connected non-host players are Ready.
+Short disconnects now attempt automatic reconnect before the session is dropped.
+If the active host disconnects, host control is handed off to a connected player.
 
 Use Left and Right while the panel is open to switch pages:
 

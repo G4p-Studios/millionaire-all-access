@@ -11,6 +11,7 @@ import threading
 import urllib.request
 import json
 import time
+import uuid
 from settings import (
     LOBBY_SPY_URL as DEFAULT_SPY_URL,
     SESSION_SYNC_CHUNK_SIZE,
@@ -47,12 +48,16 @@ s.listen(4)
 print("Waiting for connections...")
 
 # Game State
+DISCONNECT_GRACE_SECONDS = 30
+
 game_state_lock = threading.Lock()
 game_state = {
     "players": [],
     "game_started": False,
     "lobby_name": lobby_name,
     "host_name": host_name,
+    "host_player_id": 0,
+    "host_handoff_notice": "",
     "asset_manifest": [],
     "asset_revision": 0,
     "start_block_reason": ""
@@ -61,19 +66,82 @@ game_state = {
 session_assets = {}
 session_manifest = []
 session_uploads = {}
+session_tokens = {}
+id_to_token = {}
 
 id_counter = 1
 id_lock = threading.Lock()
+
+
+def _connected_players_locked():
+    return [p for p in game_state["players"] if getattr(p, "connected", True)]
+
+
+def _find_player_by_id_locked(player_id):
+    for p in game_state["players"]:
+        if p.id == player_id:
+            return p
+    return None
+
+
+def _elect_host_locked(notice=""):
+    connected = _connected_players_locked()
+    if not connected:
+        game_state["host_player_id"] = -1
+        game_state["host_handoff_notice"] = notice or "No active host connected."
+        return -1
+
+    preferred = [p for p in connected if p.id == 0]
+    host_player = preferred[0] if preferred else min(connected, key=lambda p: p.id)
+
+    game_state["host_player_id"] = host_player.id
+    game_state["host_name"] = host_player.name
+    if notice:
+        game_state["host_handoff_notice"] = notice
+    return host_player.id
+
+
+def _prune_disconnected_locked():
+    now = time.time()
+    keep = []
+    removed_ids = []
+    for p in game_state["players"]:
+        if getattr(p, "connected", True):
+            keep.append(p)
+            continue
+
+        disconnected_at = float(getattr(p, "disconnected_at", now))
+        if now - disconnected_at <= DISCONNECT_GRACE_SECONDS:
+            keep.append(p)
+        else:
+            removed_ids.append(p.id)
+
+    if removed_ids:
+        game_state["players"] = keep
+        for pid in removed_ids:
+            token = id_to_token.pop(pid, None)
+            if token:
+                session_tokens.pop(token, None)
+
+        if game_state.get("host_player_id") in removed_ids:
+            _elect_host_locked("Host timed out. Control handed off.")
+
+        if not _connected_players_locked():
+            game_state["game_started"] = False
+            game_state["start_block_reason"] = ""
 
 def register_lobby():
     while True:
         if is_public:
             try:
+                with game_state_lock:
+                    connected_count = len(_connected_players_locked())
+                    current_host_name = game_state.get("host_name", host_name)
                 data = {
                     "name": lobby_name,
-                    "host": host_name,
+                    "host": current_host_name,
                     "port": server_port,
-                    "players": len(game_state["players"]),
+                    "players": connected_count,
                     "max_players": 4
                 }
                 json_data = json.dumps(data).encode('utf-8')
@@ -110,13 +178,24 @@ def recv_packet(conn):
         return None
     return pickle.loads(payload)
 
+
+def cleanup_loop():
+    while True:
+        with game_state_lock:
+            _prune_disconnected_locked()
+        time.sleep(2)
+
+
+start_new_thread(cleanup_loop, ())
+
+
 def threaded_client(conn):
-    global id_counter, game_state, session_assets, session_manifest, session_uploads
-    
-    # --- HANDSHAKE: Receive Name ---
+    global id_counter, game_state, session_assets, session_manifest, session_uploads, session_tokens, id_to_token
+
+    # --- HANDSHAKE: Receive identity payload ---
     try:
-        player_name = recv_packet(conn)
-        if not player_name:
+        hello = recv_packet(conn)
+        if not hello:
             conn.close()
             return
     except Exception as e:
@@ -124,28 +203,70 @@ def threaded_client(conn):
         conn.close()
         return
 
-    # --- HANDSHAKE: Assign ID ---
-    player_id = -1
-    
-    if player_name == host_name:
-        print(f"Host '{player_name}' identified. Assigning ID 0.")
-        player_id = 0
-        with game_state_lock:
-            # Remove any ghost hosts
-            game_state["players"] = [p for p in game_state["players"] if p.id != 0]
+    if isinstance(hello, dict):
+        player_name = str(hello.get("name", "")).strip()
+        reconnect_token = str(hello.get("session_token", "")).strip()
     else:
-        with id_lock:
-            player_id = id_counter
-            id_counter += 1
-        print(f"Player '{player_name}' connected. Assigned ID {player_id}.")
+        player_name = str(hello).strip()
+        reconnect_token = ""
 
-    player_object = Player(player_id)
-    player_object.name = player_name
-    player_object.asset_ready = (player_id == 0 or len(session_manifest) == 0)
-    
+    if not player_name:
+        conn.close()
+        return
+
+    player_id = -1
+    player_object = None
+    reconnected = False
+
     with game_state_lock:
-        game_state["players"].append(player_object)
+        _prune_disconnected_locked()
+
+        if reconnect_token and reconnect_token in session_tokens:
+            session = session_tokens[reconnect_token]
+            player_object = session["player"]
+            player_id = int(session["id"])
+            reconnected = True
+            if player_name:
+                player_object.name = player_name
+        else:
+            reconnect_token = str(uuid.uuid4())
+
+            if player_name == host_name and 0 not in id_to_token:
+                player_id = 0
+                print(f"Host '{player_name}' connected as primary host ID 0.")
+            else:
+                with id_lock:
+                    while id_counter in id_to_token:
+                        id_counter += 1
+                    player_id = id_counter
+                    id_counter += 1
+                print(f"Player '{player_name}' connected. Assigned ID {player_id}.")
+
+            player_object = Player(player_id)
+            player_object.name = player_name
+            session_tokens[reconnect_token] = {"id": player_id, "player": player_object}
+            id_to_token[player_id] = reconnect_token
+            game_state["players"].append(player_object)
+
+        if player_object not in game_state["players"]:
+            game_state["players"].append(player_object)
+
+        player_object.connected = True
+        player_object.disconnected_at = 0.0
+        if not hasattr(player_object, "zone"):
+            player_object.zone = "Contestant Area"
+        if not hasattr(player_object, "seated"):
+            player_object.seated = False
+        if not hasattr(player_object, "asset_ready"):
+            player_object.asset_ready = (player_id == 0 or len(session_manifest) == 0)
+
         game_state["asset_manifest"] = session_manifest
+        _elect_host_locked("Host reconnected." if reconnected and player_id == 0 else "")
+
+        # Attach reconnect metadata so older clients still receive a Player object.
+        player_object.session_token = reconnect_token
+        player_object.reconnected = reconnected
+        player_object.host_player_id = game_state.get("host_player_id", 0)
 
     send_packet(conn, player_object)
 
@@ -157,9 +278,16 @@ def threaded_client(conn):
                 break
 
             with game_state_lock:
+                _prune_disconnected_locked()
                 reply = game_state
-                if command == "start" and player_id == 0:
-                    non_hosts = [p for p in game_state["players"] if p.id != 0]
+                current_host_id = int(game_state.get("host_player_id", -1))
+                is_host_actor = (player_id == current_host_id)
+
+                if command == "start" and is_host_actor:
+                    non_hosts = [
+                        p for p in game_state["players"]
+                        if p.id != current_host_id and getattr(p, "connected", True)
+                    ]
                     waiting = [p.name for p in non_hosts if not getattr(p, "asset_ready", False)]
                     if waiting:
                         game_state["start_block_reason"] = f"Waiting for asset sync: {', '.join(waiting)}"
@@ -168,31 +296,33 @@ def threaded_client(conn):
                         game_state["game_started"] = True
                 elif isinstance(command, dict) and command.get("action") == "move_zone":
                     zone_name = command.get("zone")
-                    for player in game_state["players"]:
-                        if player.id == player_id:
-                            player.zone = zone_name
-                            break
+                    player = _find_player_by_id_locked(player_id)
+                    if player:
+                        player.zone = zone_name
                 elif isinstance(command, dict) and command.get("action") == "set_seated":
                     seated = bool(command.get("seated", False))
-                    for player in game_state["players"]:
-                        if player.id == player_id:
-                            player.seated = seated
-                            break
+                    player = _find_player_by_id_locked(player_id)
+                    if player:
+                        player.seated = seated
                 elif (
                     isinstance(command, dict)
                     and command.get("action") == "move_target_hot_seat"
-                    and player_id == 0
+                    and is_host_actor
                 ):
                     target_name = command.get("target_name", "")
                     for player in game_state["players"]:
-                        if player.id != 0 and player.name == target_name:
+                        if (
+                            player.id != current_host_id
+                            and getattr(player, "connected", True)
+                            and player.name == target_name
+                        ):
                             player.zone = "Hot Seat"
                             player.seated = True
                             break
                 elif (
                     isinstance(command, dict)
                     and command.get("action") == "asset_upload_manifest"
-                    and player_id == 0
+                    and is_host_actor
                 ):
                     session_manifest = command.get("manifest", [])
                     session_assets = {}
@@ -210,7 +340,7 @@ def threaded_client(conn):
                 elif (
                     isinstance(command, dict)
                     and command.get("action") == "asset_upload_begin"
-                    and player_id == 0
+                    and is_host_actor
                 ):
                     name = command.get("name", "")
                     size = command.get("size", -1)
@@ -239,7 +369,7 @@ def threaded_client(conn):
                 elif (
                     isinstance(command, dict)
                     and command.get("action") == "asset_upload_chunk"
-                    and player_id == 0
+                    and is_host_actor
                 ):
                     name = command.get("name", "")
                     offset = command.get("offset", -1)
@@ -326,10 +456,9 @@ def threaded_client(conn):
                 elif isinstance(command, dict) and command.get("action") == "asset_client_ready":
                     is_ready = bool(command.get("ready", False))
                     revision = int(command.get("revision", -1))
-                    for player in game_state["players"]:
-                        if player.id == player_id:
-                            player.asset_ready = is_ready and revision == game_state.get("asset_revision", 0)
-                            break
+                    player = _find_player_by_id_locked(player_id)
+                    if player:
+                        player.asset_ready = is_ready and revision == game_state.get("asset_revision", 0)
                     reply = {
                         "ok": True,
                         "ready": is_ready,
@@ -337,6 +466,7 @@ def threaded_client(conn):
                         "asset_revision": game_state.get("asset_revision", 0),
                     }
                 elif command == "get":
+                    game_state["server_time"] = time.time()
                     reply = game_state
             
             send_packet(conn, reply)
@@ -348,16 +478,15 @@ def threaded_client(conn):
 
     print(f"Player {player_id} ({player_name}) disconnected.")
     with game_state_lock:
-        game_state["players"] = [p for p in game_state["players"] if p.id != player_id]
-        if player_id == 0:
-            print("Host disconnected. Resetting state.")
-            game_state["game_started"] = False
-            game_state["asset_manifest"] = []
-            game_state["asset_revision"] = 0
-            game_state["start_block_reason"] = ""
-            session_manifest = []
-            session_assets = {}
-            session_uploads = {}
+        player = _find_player_by_id_locked(player_id)
+        if player:
+            player.connected = False
+            player.disconnected_at = time.time()
+
+        if game_state.get("host_player_id", -1) == player_id:
+            _elect_host_locked("Host disconnected. Control handed off.")
+
+        _prune_disconnected_locked()
     conn.close()
 
 while True:

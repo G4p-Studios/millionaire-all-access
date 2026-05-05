@@ -96,6 +96,8 @@ How it works:
 
 The host can republish at any time using Refresh Session Assets in the host control panel.
 Sync calls now include retry with small backoff for transient network failures.
+Temporary connection drops now attempt in-session recovery before leaving the lobby.
+Server host control now supports automatic handoff when the active host disconnects.
 
 If Session Assets Folder is left blank, the game falls back to assets/session_sync.
 

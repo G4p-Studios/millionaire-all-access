@@ -49,7 +49,10 @@ class Game:
         
         player_data = self.network.connect(my_name)
         if player_data:
-            self.player_id = player_data.id
+            if isinstance(player_data, dict):
+                self.player_id = int(player_data.get("id", -1))
+            else:
+                self.player_id = int(getattr(player_data, "id", -1))
             role = "Host" if self.player_id == 0 else "Player"
             self.sounds.play_ui("ui_connect", "ui_select")
             accessibility.speak(f"Connected as {role} (ID {self.player_id}).")

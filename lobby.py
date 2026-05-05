@@ -25,6 +25,8 @@ class Lobby:
         self.screen = game.screen
         self.players = []
         self.is_host = self.game.player_id == 0
+        self.active_host_id = self.game.player_id
+        self.last_host_handoff_notice = ""
         self.lobby_name = "Lobby"
 
         self.studio_graph = {
@@ -149,8 +151,10 @@ class Lobby:
         self.last_sync_skipped_count = 0
         self.last_sync_manifest_count = 0
         self.last_sync_source = ""
+        self.connection_retry_started_at = 0
+        self.connection_retry_announced = False
 
-        if self.is_host:
+        if self._local_is_host():
             accessibility.speak(
                 "Lobby created. Waiting for other players to join. Press Enter to start the game. "
                 "Use arrow keys to navigate the set."
@@ -164,8 +168,11 @@ class Lobby:
         self.game.network.send({"action": "move_zone", "zone": self.current_zone})
         self.game.network.send({"action": "set_seated", "seated": False})
 
-        if self.is_host:
+        if self._local_is_host():
             self._host_publish_session_assets()
+
+    def _local_is_host(self):
+        return self.game.player_id == self.active_host_id
 
     def _announce_zone(self):
         self.game.sounds.play_ui_panned("ui_arrive", 0.0, "ui_select")
@@ -328,7 +335,7 @@ class Lobby:
         )
 
     def _can_open_host_panel(self):
-        return self.is_host and not self.is_seated and self.current_zone == "Host Control Panel"
+        return self._local_is_host() and not self.is_seated and self.current_zone == "Host Control Panel"
 
     def _open_host_panel(self):
         if not self._can_open_host_panel():
@@ -1115,18 +1122,19 @@ class Lobby:
         if self.host_panel_page == 0:
             if item == "Lights":
                 self.light_index = (self.light_index + 1) % len(self.light_presets)
-                accessibility.speak(f"Lights set to {self.light_presets[self.light_index]}.")
+                accessibility.speak(f"Confirmed. Lights set to {self.light_presets[self.light_index]}.")
             elif item == "Music Bed":
                 self.music_index = (self.music_index + 1) % len(self.music_presets)
                 self._apply_music_preset()
-                accessibility.speak(f"Music bed set to {self.music_presets[self.music_index]}.")
+                accessibility.speak(f"Confirmed. Music bed set to {self.music_presets[self.music_index]}.")
             elif item == "Play Sting":
                 self.game.sounds.play("lifeline")
-                accessibility.speak("Played sting.")
+                accessibility.speak("Confirmed. Sting played.")
             elif item == "Refresh Session Assets":
-                accessibility.speak("Refreshing session assets.")
+                accessibility.speak("Confirmed. Refreshing session assets.")
                 self._host_publish_session_assets()
             elif item == "Sync Status":
+                accessibility.speak("Confirmed. Reporting sync status.")
                 self._announce_sync_status()
             elif item == "Go To Flow Page":
                 self._switch_panel_page(1)
@@ -1142,14 +1150,14 @@ class Lobby:
                     self.game.sounds.play_ui("ui_error")
                 else:
                     self.call_up_index = (self.call_up_index + 1) % len(contestants)
-                    accessibility.speak(f"Call-up target set to {contestants[self.call_up_index]}.")
+                    accessibility.speak(f"Confirmed. Call-up target set to {contestants[self.call_up_index]}.")
             elif item == "Call Next Contestant":
                 target = self._get_current_call_target()
                 if target == "No contestants":
                     self.game.sounds.play_ui("ui_error")
                     accessibility.speak("No contestants are available.")
                 else:
-                    accessibility.speak(f"Calling {target} to the hot seat.")
+                    accessibility.speak(f"Confirmed. Calling {target} to the hot seat.")
             elif item == "Move Target To Hot Seat":
                 target = self._get_current_call_target()
                 if target == "No contestants":
@@ -1157,13 +1165,13 @@ class Lobby:
                     accessibility.speak("No contestants are available.")
                 else:
                     self.game.network.send({"action": "move_target_hot_seat", "target_name": target})
-                    accessibility.speak(f"Moved {target} to the hot seat.")
+                    accessibility.speak(f"Confirmed. Moved {target} to the hot seat.")
             elif item == "Quick Switch Preset":
                 self.setup_index = (self.setup_index + 1) % len(self.setup_presets)
                 self._apply_setup_preset()
             elif item == "Setup Preset":
                 self.setup_index = (self.setup_index + 1) % len(self.setup_presets)
-                accessibility.speak(f"Setup preset selected: {self.setup_presets[self.setup_index]}.")
+                accessibility.speak(f"Confirmed. Setup preset selected: {self.setup_presets[self.setup_index]}.")
             elif item == "Apply Setup Preset":
                 self._apply_setup_preset()
             elif item == "Save Current As Preset":
@@ -1180,7 +1188,7 @@ class Lobby:
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if self.host_panel_open:
-                if not self.is_host:
+                if not self._local_is_host():
                     self._close_host_panel()
                     self.game.sounds.play_ui("ui_error")
                     accessibility.speak("Only the host can use the control panel.")
@@ -1216,7 +1224,7 @@ class Lobby:
                 self._toggle_seat()
             elif (event.key == pygame.K_RETURN or event.key == pygame.K_SPACE) and self._can_open_host_panel():
                 self._open_host_panel()
-            elif event.key == pygame.K_RETURN and self.is_host:
+            elif event.key == pygame.K_RETURN and self._local_is_host():
                 print("Host is starting the game...")
                 self._try_start_game()
             elif event.key == pygame.K_ESCAPE:
@@ -1226,13 +1234,20 @@ class Lobby:
     def update(self):
         game_state = self.game.network.send("get")
         if game_state:
+            self.connection_retry_started_at = 0
+            self.connection_retry_announced = False
+
             self.lobby_name = game_state.get("lobby_name", "Lobby")
             previous_zone = self.current_zone
+
+            previous_host_id = self.active_host_id
+            self.active_host_id = int(game_state.get("host_player_id", self.active_host_id))
 
             if len(self.players) != len(game_state["players"]):
                 self.players = game_state["players"]
                 player_names = ", ".join([
                     f"{p.name} {('seated' if getattr(p, 'seated', False) else 'standing')} "
+                    f"{('connected' if getattr(p, 'connected', True) else 'reconnecting')} "
                     f"{('ready' if getattr(p, 'asset_ready', False) else 'syncing')} "
                     f"at {getattr(p, 'zone', 'Contestant Area')}"
                     for p in self.players
@@ -1241,8 +1256,26 @@ class Lobby:
             else:
                 self.players = game_state["players"]
 
+            if previous_host_id != self.active_host_id:
+                active_name = "Unknown"
+                for p in self.players:
+                    if p.id == self.active_host_id:
+                        active_name = p.name
+                        break
+
+                if self._local_is_host():
+                    accessibility.speak("Host handoff complete. You are now the active host.")
+                else:
+                    accessibility.speak(f"Host handoff complete. Active host is {active_name}.")
+
+            host_notice = game_state.get("host_handoff_notice", "")
+            if host_notice and host_notice != self.last_host_handoff_notice:
+                self.last_host_handoff_notice = host_notice
+                if "handoff" in host_notice.lower() or "reconnected" in host_notice.lower():
+                    accessibility.speak(host_notice)
+
             revision = int(game_state.get("asset_revision", 0))
-            if not self.is_host and revision != self.synced_asset_revision:
+            if not self._local_is_host() and revision != self.synced_asset_revision:
                 self.asset_sync_ready = False
                 now = pygame.time.get_ticks()
                 if now >= self.next_asset_sync_retry_at:
@@ -1252,10 +1285,10 @@ class Lobby:
                         self.next_asset_sync_retry_at = now + 3000
 
             reason = game_state.get("start_block_reason", "")
-            if self.is_host and reason and reason != self.last_start_block_reason:
+            if self._local_is_host() and reason and reason != self.last_start_block_reason:
                 self.last_start_block_reason = reason
                 accessibility.speak(reason)
-            elif self.is_host and not reason:
+            elif self._local_is_host() and not reason:
                 self.last_start_block_reason = ""
 
             for player in self.players:
@@ -1272,9 +1305,19 @@ class Lobby:
             if game_state["game_started"]:
                 self.game.start_game()
         else:
-            self.game.sounds.play_ui("ui_error")
-            accessibility.speak("Lost connection to the server. Returning to menu.")
-            self.game.end_session()
+            now = pygame.time.get_ticks()
+            if self.connection_retry_started_at == 0:
+                self.connection_retry_started_at = now
+
+            if not self.connection_retry_announced:
+                self.connection_retry_announced = True
+                self.game.sounds.play_ui("ui_error")
+                accessibility.speak("Connection interrupted. Attempting to recover.")
+
+            if now - self.connection_retry_started_at > 7000:
+                self.game.sounds.play_ui("ui_error")
+                accessibility.speak("Could not recover connection. Returning to menu.")
+                self.game.end_session()
 
     def draw(self):
         colors = self.game.config.colors
@@ -1302,7 +1345,7 @@ class Lobby:
             zone_surface = font_small.render(zone, True, zone_color)
             self.screen.blit(zone_surface, (40, SCREEN_HEIGHT / 3 + 40 + idx * 36))
 
-        if self.is_host:
+        if self._local_is_host():
             inst_text = font_main.render("Press Enter to Start", True, colors["highlight"])
             inst_rect = inst_text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100))
             self.screen.blit(inst_text, inst_rect)
