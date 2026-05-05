@@ -46,6 +46,7 @@ class Lobby:
             "Music Bed",
             "Play Sting",
             "Refresh Session Assets",
+            "Sync Status",
             "Go To Flow Page",
             "Start Game",
             "Close Panel",
@@ -68,6 +69,9 @@ class Lobby:
         self.synced_asset_revision = 0 if self.is_host else -1
         self.next_asset_sync_retry_at = 0
         self.last_start_block_reason = ""
+        self.last_sync_skipped_count = 0
+        self.last_sync_manifest_count = 0
+        self.last_sync_source = ""
 
         if self.is_host:
             accessibility.speak(
@@ -165,6 +169,8 @@ class Lobby:
             detail = self._get_current_call_target()
         elif item == "Setup Preset":
             detail = self.setup_presets[self.setup_index]
+        elif item == "Sync Status":
+            detail = "Press Enter"
 
         announcement = item if not detail else f"{item}: {detail}"
         accessibility.speak(announcement)
@@ -215,6 +221,23 @@ class Lobby:
                 h.update(block)
         return h.hexdigest()
 
+    def _send_with_retry(self, payload):
+        for attempt in range(SESSION_SYNC_NETWORK_RETRIES):
+            reply = self.game.network.send(payload)
+            if reply is not None:
+                return reply
+            if attempt < SESSION_SYNC_NETWORK_RETRIES - 1:
+                pygame.time.wait(SESSION_SYNC_RETRY_BACKOFF_MS * (attempt + 1))
+        return None
+
+    def _progress_bucket(self, offset, total):
+        if total <= 0:
+            return 100
+        percent = int((offset * 100) / total)
+        step = max(1, int(SESSION_SYNC_PROGRESS_STEP_PERCENT))
+        bucket = (percent // step) * step
+        return min(100, bucket)
+
     def _get_host_asset_source_dir(self):
         configured = self.game.config.data.get("session_assets_dir", SESSION_SYNC_SOURCE_DIR)
         if not isinstance(configured, str):
@@ -227,9 +250,10 @@ class Lobby:
         source = self._get_host_asset_source_dir()
         manifest = []
         files = {}
+        skipped_too_large = []
 
         if not os.path.isdir(source):
-            return source, False, manifest, files
+            return source, False, manifest, files, skipped_too_large
 
         for root, _, names in os.walk(source):
             for name in names:
@@ -242,6 +266,9 @@ class Lobby:
 
                 with open(abs_path, "rb") as f:
                     data = f.read()
+                if len(data) > SESSION_SYNC_MAX_FILE_SIZE:
+                    skipped_too_large.append((rel_path, len(data)))
+                    continue
                 digest = hashlib.sha256(data).hexdigest()
 
                 files[rel_path] = data
@@ -252,11 +279,35 @@ class Lobby:
                 })
 
         manifest.sort(key=lambda x: x["name"])
-        return source, True, manifest, files
+        return source, True, manifest, files, skipped_too_large
+
+    def _announce_sync_status(self):
+        revision = self.synced_asset_revision
+        source = self.last_sync_source if self.last_sync_source else self._get_host_asset_source_dir()
+        skipped = self.last_sync_skipped_count
+        published = self.last_sync_manifest_count
+
+        if self.players:
+            states = []
+            for p in self.players:
+                state = "ready" if getattr(p, "asset_ready", False) else "syncing"
+                states.append(f"{p.name} {state}")
+            player_state_text = ", ".join(states)
+        else:
+            player_state_text = "No players connected"
+
+        accessibility.speak(
+            f"Sync status. Revision {revision}. Published {published} files. "
+            f"Skipped {skipped} oversized files. Source folder {source}. "
+            f"Player states: {player_state_text}."
+        )
 
     def _host_publish_session_assets(self):
-        source, source_exists, manifest, files = self._collect_session_assets()
-        reply = self.game.network.send({"action": "asset_upload_manifest", "manifest": manifest})
+        source, source_exists, manifest, files, skipped_too_large = self._collect_session_assets()
+        self.last_sync_source = source
+        self.last_sync_skipped_count = len(skipped_too_large)
+        self.last_sync_manifest_count = len(manifest)
+        reply = self._send_with_retry({"action": "asset_upload_manifest", "manifest": manifest})
         if not reply or not reply.get("ok"):
             accessibility.speak("Could not publish session assets.")
             return
@@ -264,7 +315,7 @@ class Lobby:
         revision = int(reply.get("asset_revision", 0))
 
         if not manifest:
-            ready_reply = self.game.network.send({
+            ready_reply = self._send_with_retry({
                 "action": "asset_client_ready",
                 "ready": True,
                 "revision": revision,
@@ -280,19 +331,31 @@ class Lobby:
                 accessibility.speak(f"No custom session assets found in {source}.")
             else:
                 accessibility.speak(f"Session asset folder not found: {source}.")
+            if skipped_too_large:
+                accessibility.speak(
+                    f"Skipped {len(skipped_too_large)} files over "
+                    f"{SESSION_SYNC_MAX_FILE_SIZE // (1024 * 1024)} megabytes."
+                )
             return
 
-        for entry in manifest:
+        for index, entry in enumerate(manifest):
             name = entry["name"]
             data = files[name]
 
-            begin_reply = self.game.network.send({
+            accessibility.speak(f"Uploading asset {index + 1} of {len(manifest)}: {name}.")
+
+            begin_reply = self._send_with_retry({
                 "action": "asset_upload_begin",
                 "name": name,
                 "size": len(data),
                 "sha256": entry.get("sha256", ""),
             })
             if not begin_reply or not begin_reply.get("ok"):
+                if begin_reply and begin_reply.get("error") == "file_too_large":
+                    accessibility.speak(
+                        f"Server rejected {name} because it exceeds the max size limit."
+                    )
+                    continue
                 accessibility.speak(f"Failed to start upload for {name}.")
                 return
 
@@ -301,9 +364,15 @@ class Lobby:
                 accessibility.speak(f"Upload offset error for {name}.")
                 return
 
+            last_bucket = -1
+            bucket = self._progress_bucket(offset, len(data))
+            if bucket > last_bucket:
+                last_bucket = bucket
+                accessibility.speak(f"{name} upload {bucket} percent.")
+
             while offset < len(data):
                 chunk = data[offset:offset + SESSION_SYNC_CHUNK_SIZE]
-                upload_reply = self.game.network.send({
+                upload_reply = self._send_with_retry({
                     "action": "asset_upload_chunk",
                     "name": name,
                     "offset": offset,
@@ -329,7 +398,12 @@ class Lobby:
                     return
                 offset = next_offset
 
-        ready_reply = self.game.network.send({
+                bucket = self._progress_bucket(offset, len(data))
+                if bucket > last_bucket:
+                    last_bucket = bucket
+                    accessibility.speak(f"{name} upload {bucket} percent.")
+
+        ready_reply = self._send_with_retry({
             "action": "asset_client_ready",
             "ready": True,
             "revision": revision,
@@ -341,20 +415,27 @@ class Lobby:
         self.game.sounds.set_session_asset_root(source)
         self.asset_sync_ready = True
         self.synced_asset_revision = revision
+        if skipped_too_large:
+            accessibility.speak(
+                f"Skipped {len(skipped_too_large)} files over "
+                f"{SESSION_SYNC_MAX_FILE_SIZE // (1024 * 1024)} megabytes."
+            )
         accessibility.speak(f"Published {len(manifest)} session assets from {source}.")
 
     def _attempt_client_asset_sync(self, expected_revision=None):
-        manifest_reply = self.game.network.send({"action": "asset_get_manifest"})
+        manifest_reply = self._send_with_retry({"action": "asset_get_manifest"})
         if not manifest_reply or manifest_reply.get("type") != "asset_manifest":
             return False
 
         revision = int(manifest_reply.get("revision", 0))
+        server_chunk_size = int(manifest_reply.get("chunk_size", SESSION_SYNC_CHUNK_SIZE))
+        server_chunk_size = max(1024, min(server_chunk_size, SESSION_SYNC_CHUNK_SIZE))
         if expected_revision is not None and revision != expected_revision:
             return False
 
         manifest = manifest_reply.get("manifest", [])
         if not manifest:
-            ready_reply = self.game.network.send({
+            ready_reply = self._send_with_retry({
                 "action": "asset_client_ready",
                 "ready": True,
                 "revision": revision,
@@ -417,9 +498,15 @@ class Lobby:
                 with open(part_path, "wb"):
                     pass
 
+            last_bucket = -1
+            bucket = self._progress_bucket(offset, expected_size)
+            if bucket > last_bucket:
+                last_bucket = bucket
+                accessibility.speak(f"Downloading {rel_name}: {bucket} percent.")
+
             while offset < expected_size:
-                req_len = min(SESSION_SYNC_CHUNK_SIZE, expected_size - offset)
-                file_reply = self.game.network.send({
+                req_len = min(server_chunk_size, expected_size - offset)
+                file_reply = self._send_with_retry({
                     "action": "asset_get_file_chunk",
                     "name": rel_name,
                     "offset": offset,
@@ -464,6 +551,11 @@ class Lobby:
 
                 offset = int(file_reply.get("next_offset", offset + len(chunk_data)))
 
+                bucket = self._progress_bucket(offset, expected_size)
+                if bucket > last_bucket:
+                    last_bucket = bucket
+                    accessibility.speak(f"Downloading {rel_name}: {bucket} percent.")
+
             try:
                 os.replace(part_path, target_path)
             except Exception:
@@ -476,12 +568,12 @@ class Lobby:
                 accessibility.speak(f"Downloaded asset did not match expected hash: {rel_name}.")
                 return False
 
-        ready_reply = self.game.network.send({
+        ready_reply = self._send_with_retry({
             "action": "asset_client_ready",
             "ready": True,
             "revision": revision,
         })
-        if not ready_reply or not ready_reply.get("ok"):
+        if not ready_reply or not ready_reply.get("ok") or not ready_reply.get("accepted", True):
             return False
 
         self.game.sounds.set_session_asset_root(session_dir)
@@ -543,6 +635,8 @@ class Lobby:
             elif item == "Refresh Session Assets":
                 accessibility.speak("Refreshing session assets.")
                 self._host_publish_session_assets()
+            elif item == "Sync Status":
+                self._announce_sync_status()
             elif item == "Go To Flow Page":
                 self._switch_panel_page(1)
             elif item == "Start Game":

@@ -84,6 +84,7 @@ The lobby now supports Roblox and VP style session asset sync.
 - Default source folder: assets/session_sync
 - Allowed file types: wav, mp3, flac, ogg, png, jpg, jpeg, json
 - Client cache folder: temp_assets/<lobby_name>
+- Max per-file sync size: 100 MB
 
 How it works:
 
@@ -94,6 +95,7 @@ How it works:
 5. Host start is blocked until all connected non-host players are ready.
 
 The host can republish at any time using Refresh Session Assets in the host control panel.
+Sync calls now include retry with small backoff for transient network failures.
 
 If Session Assets Folder is left blank, the game falls back to assets/session_sync.
 
@@ -107,5 +109,5 @@ This project is focused on stable accessibility and host usability first. Additi
 
 When open, the host control panel has two pages:
 
-- Show Controls: Lights, Music Bed, Sting, Refresh Session Assets, Start Game
+- Show Controls: Lights, Music Bed, Sting, Refresh Session Assets, Sync Status, Start Game
 - Flow and Presets: Call-Up Target, Call Next Contestant, Move Target To Hot Seat, Setup Preset, Apply Setup Preset

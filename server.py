@@ -11,7 +11,11 @@ import threading
 import urllib.request
 import json
 import time
-from settings import LOBBY_SPY_URL as DEFAULT_SPY_URL, SESSION_SYNC_CHUNK_SIZE
+from settings import (
+    LOBBY_SPY_URL as DEFAULT_SPY_URL,
+    SESSION_SYNC_CHUNK_SIZE,
+    SESSION_SYNC_MAX_FILE_SIZE,
+)
 
 # Default Configuration
 server_port = 50550
@@ -212,6 +216,9 @@ def threaded_client(conn):
                     size = command.get("size", -1)
                     sha256 = command.get("sha256", "")
                     if isinstance(name, str) and isinstance(size, int) and size >= 0 and isinstance(sha256, str):
+                        if size > SESSION_SYNC_MAX_FILE_SIZE:
+                            reply = {"ok": False, "error": "file_too_large", "name": name}
+                            continue
                         existing = session_uploads.get(name)
                         if (
                             existing
