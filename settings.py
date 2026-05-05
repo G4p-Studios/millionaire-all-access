@@ -35,6 +35,8 @@ SESSION_SYNC_PROGRESS_STEP_PERCENT = 25
 SESSION_SYNC_ALLOWED_EXTS = [
     ".wav", ".mp3", ".flac", ".ogg", ".png", ".jpg", ".jpeg", ".json"
 ]
+STUDIO_PRESET_PACKS_DIR = "assets/preset_packs"
+STUDIO_PRESET_PACK_EXTENSION = ".json"
 
 SOUND_SEARCH_PATHS = [
     "assets/sounds",

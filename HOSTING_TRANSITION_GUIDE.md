@@ -35,6 +35,21 @@ Use Left and Right while the panel is open to switch pages:
 - Show Controls page includes Refresh Session Assets to republish changes mid-lobby
 - Show Controls page includes Sync Status to announce revision, skipped files, and player readiness
 - Flow and Presets page for call-up order, explicit Move Target To Hot Seat, and setup presets
+- Flow and Presets page includes Quick Switch Preset to cycle and apply the next preset in one action
+- Flow and Presets page includes Save Current As Preset for reusable host studio snapshots
+- Flow and Presets page includes Import Preset Pack to load .json preset packs from disk
+- Flow and Presets page includes Delete Selected Preset to clean up custom or imported presets
+
+Setup presets now apply a full host studio state in one action:
+
+- lights and music bed
+- host location and seated or standing posture
+- call-up pointer reset or keep behavior
+
+Use Save Current As Preset to capture your current studio setup and reuse it in future sessions.
+Saved presets are written as JSON pack files under assets/preset_packs and auto-loaded on startup.
+Use Import Preset Pack to bring in packs shared by other hosts.
+Use Delete Selected Preset to remove a selected non-built-in preset from your rotation.
 
 ## During gameplay
 

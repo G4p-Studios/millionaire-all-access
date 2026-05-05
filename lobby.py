@@ -1,7 +1,14 @@
 # lobby.py
 
 import hashlib
+import json
 import os
+try:
+    import tkinter as tk
+    from tkinter import filedialog
+except Exception:
+    tk = None
+    filedialog = None
 
 import pygame
 
@@ -55,13 +62,45 @@ class Lobby:
             "Call-Up Target",
             "Call Next Contestant",
             "Move Target To Hot Seat",
+            "Quick Switch Preset",
             "Setup Preset",
             "Apply Setup Preset",
+            "Save Current As Preset",
+            "Import Preset Pack",
+            "Delete Selected Preset",
             "Back To Show Controls",
             "Close Panel",
         ]
 
-        self.setup_presets = ["Classic Live", "Fast Practice", "FFF Warmup"]
+        self.builtin_setup_preset_states = {
+            "Classic Live": {
+                "lights": "Studio Blue",
+                "music": "Lobby Theme",
+                "zone": "Host Control Panel",
+                "seated": False,
+                "call_up_mode": "reset",
+            },
+            "Fast Practice": {
+                "lights": "Warm Spotlight",
+                "music": "Silence",
+                "zone": "Host Control Panel",
+                "seated": False,
+                "call_up_mode": "keep",
+            },
+            "FFF Warmup": {
+                "lights": "Fastest Finger",
+                "music": "Question Bed",
+                "zone": "Contestant Area",
+                "seated": True,
+                "call_up_mode": "reset",
+            },
+        }
+        self.custom_setup_presets = self._load_custom_setup_presets()
+        self.file_setup_presets = self._load_setup_preset_packs()
+        self.setup_presets = []
+        self.setup_preset_states = {}
+        self.setup_preset_meta = {}
+        self._rebuild_setup_presets()
         self.setup_index = 0
         self.call_up_index = 0
 
@@ -167,7 +206,11 @@ class Lobby:
             detail = self.music_presets[self.music_index]
         elif item == "Call-Up Target":
             detail = self._get_current_call_target()
+        elif item == "Quick Switch Preset":
+            detail = self.setup_presets[self.setup_index]
         elif item == "Setup Preset":
+            detail = self.setup_presets[self.setup_index]
+        elif item == "Delete Selected Preset":
             detail = self.setup_presets[self.setup_index]
         elif item == "Sync Status":
             detail = "Press Enter"
@@ -237,6 +280,280 @@ class Lobby:
         step = max(1, int(SESSION_SYNC_PROGRESS_STEP_PERCENT))
         bucket = (percent // step) * step
         return min(100, bucket)
+
+    def _load_custom_setup_presets(self):
+        raw = self.game.config.data.get("custom_setup_presets", [])
+        if not isinstance(raw, list):
+            return []
+
+        custom = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            state = item.get("state")
+            if not isinstance(name, str) or not name.strip() or not isinstance(state, dict):
+                continue
+            custom.append({"name": name.strip(), "state": state})
+
+        return custom
+
+    def _preset_pack_dir(self):
+        path = os.path.expandvars(os.path.expanduser(STUDIO_PRESET_PACKS_DIR))
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _safe_preset_filename(self, name):
+        cleaned = []
+        for ch in name:
+            if ch.isalnum() or ch in ("-", "_"):
+                cleaned.append(ch)
+            elif ch.isspace():
+                cleaned.append("_")
+        slug = "".join(cleaned).strip("_")
+        return slug if slug else "preset"
+
+    def _load_setup_preset_packs(self):
+        presets = []
+        pack_dir = self._preset_pack_dir()
+
+        try:
+            names = sorted(os.listdir(pack_dir))
+        except Exception:
+            return presets
+
+        for filename in names:
+            if not filename.lower().endswith(STUDIO_PRESET_PACK_EXTENSION):
+                continue
+
+            full_path = os.path.join(pack_dir, filename)
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+            except Exception:
+                continue
+
+            if not isinstance(payload, dict):
+                continue
+
+            name = payload.get("name")
+            state = payload.get("state")
+            if not isinstance(name, str) or not name.strip() or not isinstance(state, dict):
+                continue
+
+            presets.append({
+                "name": f"Pack: {name.strip()}",
+                "state": state,
+                "path": full_path,
+            })
+
+        return presets
+
+    def _save_setup_preset_pack(self, name, state):
+        pack_dir = self._preset_pack_dir()
+        slug = self._safe_preset_filename(name)
+        path = os.path.join(pack_dir, f"{slug}{STUDIO_PRESET_PACK_EXTENSION}")
+
+        payload = {
+            "name": name,
+            "state": state,
+            "format": 1,
+        }
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+    def _rebuild_setup_presets(self):
+        self.setup_preset_states = {}
+        self.setup_presets = []
+        self.setup_preset_meta = {}
+
+        for name, state in self.builtin_setup_preset_states.items():
+            self.setup_preset_states[name] = state
+            self.setup_preset_meta[name] = {"source": "builtin"}
+            self.setup_presets.append(name)
+
+        for item in self.file_setup_presets:
+            name = item["name"]
+            state = item["state"]
+            if name in self.setup_presets:
+                self.setup_presets.remove(name)
+            self.setup_preset_states[name] = state
+            self.setup_preset_meta[name] = {
+                "source": "pack",
+                "path": item.get("path", ""),
+            }
+            self.setup_presets.append(name)
+
+        for item in self.custom_setup_presets:
+            name = item["name"]
+            state = item["state"]
+            if name in self.setup_presets:
+                self.setup_presets.remove(name)
+            self.setup_preset_states[name] = state
+            self.setup_preset_meta[name] = {"source": "custom"}
+            self.setup_presets.append(name)
+
+    def _persist_custom_setup_presets(self):
+        self.game.config.data["custom_setup_presets"] = list(self.custom_setup_presets)
+        self.game.config.save()
+
+    def _snapshot_current_preset_state(self):
+        return {
+            "lights": self.light_presets[self.light_index],
+            "music": self.music_presets[self.music_index],
+            "zone": self.current_zone,
+            "seated": bool(self.is_seated),
+            "call_up_mode": "set",
+            "call_up_index": int(self.call_up_index),
+        }
+
+    def _save_current_as_preset(self):
+        base_name = "Custom Preset"
+        existing = set(self.setup_presets)
+        index = 1
+        while f"{base_name} {index}" in existing:
+            index += 1
+
+        name = f"{base_name} {index}"
+        state = self._snapshot_current_preset_state()
+        self.custom_setup_presets.append({"name": name, "state": state})
+
+        if len(self.custom_setup_presets) > 30:
+            self.custom_setup_presets = self.custom_setup_presets[-30:]
+
+        try:
+            self._save_setup_preset_pack(name, state)
+        except Exception:
+            accessibility.speak("Preset saved in session, but writing preset pack file failed.")
+
+        self.file_setup_presets = self._load_setup_preset_packs()
+        self._rebuild_setup_presets()
+        self._persist_custom_setup_presets()
+        self.setup_index = self.setup_presets.index(name)
+        accessibility.speak(f"Saved current studio setup as {name}.")
+
+    def _import_setup_preset_pack(self):
+        if tk is None or filedialog is None:
+            accessibility.speak("Preset import is unavailable on this system.")
+            self.game.sounds.play_ui("ui_error")
+            return
+
+        root = None
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            selected = filedialog.askopenfilename(
+                title="Select Preset Pack",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            )
+        except Exception:
+            selected = ""
+        finally:
+            if root is not None:
+                root.destroy()
+
+        if not selected:
+            accessibility.speak("Preset pack import cancelled.")
+            return
+
+        try:
+            with open(selected, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+        except Exception:
+            self.game.sounds.play_ui("ui_error")
+            accessibility.speak("Preset pack file could not be read.")
+            return
+
+        if not isinstance(payload, dict):
+            self.game.sounds.play_ui("ui_error")
+            accessibility.speak("Preset pack format is invalid.")
+            return
+
+        name = payload.get("name")
+        state = payload.get("state")
+        if not isinstance(name, str) or not name.strip() or not isinstance(state, dict):
+            self.game.sounds.play_ui("ui_error")
+            accessibility.speak("Preset pack is missing a valid name or state.")
+            return
+
+        base_name = self._safe_preset_filename(name)
+        pack_dir = self._preset_pack_dir()
+        suffix = 0
+        while True:
+            filename = (
+                f"{base_name}{STUDIO_PRESET_PACK_EXTENSION}"
+                if suffix == 0
+                else f"{base_name}_{suffix}{STUDIO_PRESET_PACK_EXTENSION}"
+            )
+            out_path = os.path.join(pack_dir, filename)
+            if not os.path.exists(out_path):
+                break
+            suffix += 1
+
+        out_payload = {
+            "name": name.strip(),
+            "state": state,
+            "format": 1,
+        }
+        try:
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(out_payload, f, indent=2)
+        except Exception:
+            self.game.sounds.play_ui("ui_error")
+            accessibility.speak("Preset pack import failed while writing the file.")
+            return
+
+        imported_name = f"Pack: {name.strip()}"
+        self.file_setup_presets = self._load_setup_preset_packs()
+        self._rebuild_setup_presets()
+        if imported_name in self.setup_presets:
+            self.setup_index = self.setup_presets.index(imported_name)
+        accessibility.speak(f"Imported preset pack {name.strip()}.")
+
+    def _delete_selected_preset(self):
+        preset = self.setup_presets[self.setup_index]
+        meta = self.setup_preset_meta.get(preset, {"source": "builtin"})
+        source = meta.get("source", "builtin")
+        deleted_label = "preset"
+
+        if source == "builtin":
+            self.game.sounds.play_ui("ui_error")
+            accessibility.speak("Built-in presets cannot be deleted.")
+            return
+
+        if source == "pack":
+            deleted_label = "imported pack preset"
+            path = meta.get("path", "")
+            try:
+                if path and os.path.isfile(path):
+                    os.remove(path)
+            except Exception:
+                self.game.sounds.play_ui("ui_error")
+                accessibility.speak("Preset pack file could not be deleted.")
+                return
+        elif source == "custom":
+            deleted_label = "custom preset"
+            self.custom_setup_presets = [p for p in self.custom_setup_presets if p.get("name") != preset]
+            self._persist_custom_setup_presets()
+
+            # Custom presets are also exported to preset packs using a slugged filename.
+            custom_path = os.path.join(
+                self._preset_pack_dir(),
+                f"{self._safe_preset_filename(preset)}{STUDIO_PRESET_PACK_EXTENSION}",
+            )
+            try:
+                if os.path.isfile(custom_path):
+                    os.remove(custom_path)
+            except Exception:
+                pass
+
+        self.file_setup_presets = self._load_setup_preset_packs()
+        self._rebuild_setup_presets()
+        if self.setup_index >= len(self.setup_presets):
+            self.setup_index = max(0, len(self.setup_presets) - 1)
+        accessibility.speak(f"Deleted {deleted_label} {preset}.")
 
     def _get_host_asset_source_dir(self):
         configured = self.game.config.data.get("session_assets_dir", SESSION_SYNC_SOURCE_DIR)
@@ -595,18 +912,43 @@ class Lobby:
     def _apply_setup_preset(self):
         preset = self.setup_presets[self.setup_index]
 
-        if preset == "Classic Live":
-            self.light_index = 0
-            self.music_index = 0
-        elif preset == "Fast Practice":
-            self.light_index = 1
-            self.music_index = 2
-        else:
-            self.light_index = 2
-            self.music_index = 0
+        state = self.setup_preset_states.get(preset, {})
+
+        target_light = state.get("lights")
+        if target_light in self.light_presets:
+            self.light_index = self.light_presets.index(target_light)
+
+        target_music = state.get("music")
+        if target_music in self.music_presets:
+            self.music_index = self.music_presets.index(target_music)
+
+        target_zone = state.get("zone")
+        if target_zone in self.studio_zones:
+            self.current_zone = target_zone
+            self.zone_index = self.studio_zones.index(target_zone)
+            self.game.network.send({"action": "move_zone", "zone": target_zone})
+
+        target_seated = bool(state.get("seated", False))
+        if self.current_zone not in self.seat_zones:
+            target_seated = False
+        self._set_seated(target_seated, announce=False)
+
+        call_up_mode = state.get("call_up_mode", "keep")
+        if call_up_mode == "reset":
+            self.call_up_index = 0
+        elif call_up_mode == "next":
+            self.call_up_index += 1
+        elif call_up_mode == "set":
+            self.call_up_index = int(state.get("call_up_index", self.call_up_index))
 
         self._apply_music_preset()
-        accessibility.speak(f"Applied preset {preset}.")
+        posture = "seated" if self.is_seated else "standing"
+        accessibility.speak(
+            f"Applied preset {preset}. "
+            f"Lights {self.light_presets[self.light_index]}. "
+            f"Music {self.music_presets[self.music_index]}. "
+            f"Host at {self.current_zone}, {posture}."
+        )
 
     def _apply_music_preset(self):
         preset = self.music_presets[self.music_index]
@@ -667,11 +1009,20 @@ class Lobby:
                 else:
                     self.game.network.send({"action": "move_target_hot_seat", "target_name": target})
                     accessibility.speak(f"Moved {target} to the hot seat.")
+            elif item == "Quick Switch Preset":
+                self.setup_index = (self.setup_index + 1) % len(self.setup_presets)
+                self._apply_setup_preset()
             elif item == "Setup Preset":
                 self.setup_index = (self.setup_index + 1) % len(self.setup_presets)
                 accessibility.speak(f"Setup preset selected: {self.setup_presets[self.setup_index]}.")
             elif item == "Apply Setup Preset":
                 self._apply_setup_preset()
+            elif item == "Save Current As Preset":
+                self._save_current_as_preset()
+            elif item == "Import Preset Pack":
+                self._import_setup_preset_pack()
+            elif item == "Delete Selected Preset":
+                self._delete_selected_preset()
             elif item == "Back To Show Controls":
                 self._switch_panel_page(0)
             elif item == "Close Panel":
