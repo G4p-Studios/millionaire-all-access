@@ -5,7 +5,8 @@ This guide helps hosts who are used to Roblox Studio or Virtual Paradise start h
 ## Concept mapping
 
 - Roblox or Virtual Paradise studio scene maps to the lobby studio areas in this game.
-- Moving around the set is done with Left and Right in the lobby.
+- Moving around the set uses directional navigation (Arrow keys) across connected studio nodes.
+- Each arrival announces landmark, available exits, and nearby key targets.
 - Triggering game progress is host-driven, similar to running stages manually in studio tools.
 
 ## First hosted session
@@ -16,7 +17,7 @@ This guide helps hosts who are used to Roblox Studio or Virtual Paradise start h
 4. Set Public if you want your lobby listed by the lobby service.
 5. Start server.
 6. Confirm players are connected in the lobby list.
-7. Move around studio areas with Left and Right to verify your setup cues.
+7. Move around studio areas with Arrow keys to verify your setup cues.
 8. Use S to sit or stand when at contestant seating, hot seat, or host control panel.
 9. Stand at Host Control Panel and press Enter or Space to open host controls.
 10. Press Enter to start once everyone is ready.

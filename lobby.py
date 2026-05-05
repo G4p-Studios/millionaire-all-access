@@ -27,9 +27,47 @@ class Lobby:
         self.is_host = self.game.player_id == 0
         self.lobby_name = "Lobby"
 
-        self.studio_zones = STUDIO_ZONES
-        self.zone_index = 0
-        self.current_zone = self.studio_zones[self.zone_index]
+        self.studio_graph = {
+            "Entrance": {"right": "Audience Riser"},
+            "Audience Riser": {
+                "left": "Entrance",
+                "right": "Contestant Area",
+                "up": "Camera Walkway",
+            },
+            "Contestant Area": {
+                "left": "Audience Riser",
+                "right": "Hot Seat",
+                "down": "Sound Booth",
+            },
+            "Hot Seat": {
+                "left": "Contestant Area",
+                "right": "Host Control Panel",
+                "up": "Camera Walkway",
+            },
+            "Host Control Panel": {
+                "left": "Hot Seat",
+                "down": "Sound Booth",
+            },
+            "Camera Walkway": {
+                "down": "Audience Riser",
+                "right": "Hot Seat",
+            },
+            "Sound Booth": {
+                "up": "Contestant Area",
+                "right": "Host Control Panel",
+            },
+        }
+        self.studio_landmarks = {
+            "Entrance": "main doors and floor lights",
+            "Audience Riser": "audience seating and applause wall",
+            "Contestant Area": "contestant podium row",
+            "Hot Seat": "single hot seat spotlight",
+            "Host Control Panel": "master console with cue buttons",
+            "Camera Walkway": "overhead camera rail and crane",
+            "Sound Booth": "audio desk and monitor speakers",
+        }
+        self.studio_zones = list(self.studio_graph.keys())
+        self.current_zone = "Entrance"
 
         self.seat_zones = {"Contestant Area", "Hot Seat", "Host Control Panel"}
         self.seat_labels = {
@@ -115,12 +153,12 @@ class Lobby:
         if self.is_host:
             accessibility.speak(
                 "Lobby created. Waiting for other players to join. Press Enter to start the game. "
-                "Use left and right arrow keys to move around the set."
+                "Use arrow keys to navigate the set."
             )
         else:
             accessibility.speak(
                 "Joined lobby. Waiting for the host to start the game. "
-                "Use left and right arrow keys to move around the set."
+                "Use arrow keys to navigate the set."
             )
 
         self.game.network.send({"action": "move_zone", "zone": self.current_zone})
@@ -131,22 +169,116 @@ class Lobby:
 
     def _announce_zone(self):
         self.game.sounds.play_ui("ui_arrive", "ui_select")
-        accessibility.speak(f"You are at {self.current_zone}.")
+
+        landmark = self.studio_landmarks.get(self.current_zone, "set corridor")
+        exits = self._get_exit_summary(self.current_zone)
+        proximity = self._get_proximity_summary(self.current_zone)
+
+        parts = [
+            f"You are at {self.current_zone}.",
+            f"Landmark: {landmark}.",
+            exits,
+        ]
+        if proximity:
+            parts.append(proximity)
+
+        if self.current_zone in self.seat_zones:
+            parts.append("Press S to sit or stand.")
+
+        accessibility.speak(" ".join(parts))
 
         if self._can_open_host_panel():
             self.game.sounds.play_ui("ui_panel", "ui_select")
             accessibility.speak("Host control panel. Press Enter or Space to interact with controls.")
 
-    def _move_zone(self, direction):
+    def _get_exit_summary(self, zone):
+        neighbors = self.studio_graph.get(zone, {})
+        if not neighbors:
+            return "No exits available from this location."
+
+        ordered = []
+        for key in ("left", "right", "up", "down"):
+            if key in neighbors:
+                ordered.append(f"{key} to {neighbors[key]}")
+        return f"Exits: {', '.join(ordered)}."
+
+    def _shortest_path_directions(self, start_zone, target_zone):
+        if start_zone == target_zone:
+            return []
+
+        frontier = [(start_zone, [])]
+        visited = {start_zone}
+
+        while frontier:
+            zone, path = frontier.pop(0)
+            for direction, next_zone in self.studio_graph.get(zone, {}).items():
+                if next_zone in visited:
+                    continue
+
+                next_path = path + [direction]
+                if next_zone == target_zone:
+                    return next_path
+
+                visited.add(next_zone)
+                frontier.append((next_zone, next_path))
+
+        return None
+
+    def _get_proximity_summary(self, zone):
+        target_labels = [
+            ("Hot Seat", "hot seat"),
+            ("Host Control Panel", "control panel"),
+            ("Entrance", "entrance"),
+        ]
+
+        cues = []
+        for target_zone, label in target_labels:
+            if target_zone == zone:
+                continue
+
+            path = self._shortest_path_directions(zone, target_zone)
+            if path is None:
+                continue
+
+            steps = len(path)
+            lead = path[0]
+            if steps == 1:
+                cues.append((steps, f"{label} is 1 move {lead}"))
+            else:
+                cues.append((steps, f"{label} is {steps} moves, starting {lead}"))
+
+        if not cues:
+            return ""
+
+        cues.sort(key=lambda item: item[0])
+        spoken = "; ".join(text for _, text in cues[:2])
+        return f"Proximity: {spoken}."
+
+    def _move_direction(self, direction):
+        neighbors = self.studio_graph.get(self.current_zone, {})
+        next_zone = neighbors.get(direction)
+        if not next_zone:
+            self.game.sounds.play_ui("ui_error")
+            accessibility.speak(f"No path {direction} from {self.current_zone}.")
+            return
+
         if self.is_seated:
             self._set_seated(False, announce=True)
 
         self.game.sounds.play_ui("ui_leave", "ui_step")
         self.game.sounds.play_ui("ui_step", "ui_move")
-        self.zone_index = (self.zone_index + direction) % len(self.studio_zones)
-        self.current_zone = self.studio_zones[self.zone_index]
+        self.current_zone = next_zone
         self.game.network.send({"action": "move_zone", "zone": self.current_zone})
         self._announce_zone()
+
+    def _move_tab_forward(self):
+        for direction in ("right", "down", "left", "up"):
+            if direction in self.studio_graph.get(self.current_zone, {}):
+                self._move_direction(direction)
+                return
+
+        self.game.sounds.play_ui("ui_error")
+        accessibility.speak("No available route from this location.")
 
     def _set_seated(self, seated, announce=True):
         self.is_seated = seated
@@ -172,7 +304,8 @@ class Lobby:
 
     def _announce_controls(self):
         accessibility.speak(
-            "Lobby controls. Left and right move between studio areas. "
+            "Lobby controls. Arrow keys move through connected studio areas. "
+            "Each arrival announces landmarks, exits, and nearby targets. "
             "S sits or stands when a seat is available. "
             "Enter starts the game if you are host. Escape leaves the lobby."
         )
@@ -925,7 +1058,6 @@ class Lobby:
         target_zone = state.get("zone")
         if target_zone in self.studio_zones:
             self.current_zone = target_zone
-            self.zone_index = self.studio_zones.index(target_zone)
             self.game.network.send({"action": "move_zone", "zone": target_zone})
 
         target_seated = bool(state.get("seated", False))
@@ -1052,11 +1184,15 @@ class Lobby:
                 return
 
             if event.key == pygame.K_LEFT:
-                self._move_zone(-1)
+                self._move_direction("left")
             elif event.key == pygame.K_RIGHT:
-                self._move_zone(1)
+                self._move_direction("right")
+            elif event.key == pygame.K_UP:
+                self._move_direction("up")
+            elif event.key == pygame.K_DOWN:
+                self._move_direction("down")
             elif event.key == pygame.K_TAB:
-                self._move_zone(1)
+                self._move_tab_forward()
             elif event.key == pygame.K_h:
                 self._announce_controls()
             elif event.key == pygame.K_s:
@@ -1107,10 +1243,10 @@ class Lobby:
 
             for player in self.players:
                 if player.id == self.game.player_id:
-                    self.current_zone = getattr(player, "zone", self.current_zone)
+                    incoming_zone = getattr(player, "zone", self.current_zone)
+                    if incoming_zone in self.studio_graph:
+                        self.current_zone = incoming_zone
                     self.is_seated = getattr(player, "seated", self.is_seated)
-                    if self.current_zone in self.studio_zones:
-                        self.zone_index = self.studio_zones.index(self.current_zone)
                     break
 
             if previous_zone != self.current_zone:
@@ -1158,7 +1294,7 @@ class Lobby:
             inst_rect = inst_text.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100))
             self.screen.blit(inst_text, inst_rect)
 
-        nav_text = font_small.render("Left/Right: Move   S: Sit or Stand   H: Controls", True, colors["dim"])
+        nav_text = font_small.render("Arrows: Move   S: Sit or Stand   H: Controls", True, colors["dim"])
         self.screen.blit(nav_text, (40, SCREEN_HEIGHT - 50))
 
         if self.host_panel_open:

@@ -35,14 +35,14 @@ You can also open the in-game Host Quick Start screen from the main menu.
 
 ### Lobby
 
-- Left and Right: move between studio areas
-- Tab: move to next studio area
+- Arrow keys: move through connected studio areas
+- Tab: move along the next available route
 - S: sit or stand when at a seat area
 - Enter or Space (at host control panel while standing): open host controls
 - Up and Down (inside host panel): navigate controls
 - Left and Right (inside host panel): switch between Show Controls and Flow/Presets pages
 - Enter or Space (inside host panel): activate selected control
-- H: repeat lobby controls
+- H: repeat lobby controls and movement guidance
 - Enter (host only): start game
 - Escape: leave session
 
