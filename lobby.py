@@ -168,7 +168,7 @@ class Lobby:
             self._host_publish_session_assets()
 
     def _announce_zone(self):
-        self.game.sounds.play_ui("ui_arrive", "ui_select")
+        self.game.sounds.play_ui_panned("ui_arrive", 0.0, "ui_select")
 
         landmark = self.studio_landmarks.get(self.current_zone, "set corridor")
         exits = self._get_exit_summary(self.current_zone)
@@ -188,7 +188,7 @@ class Lobby:
         accessibility.speak(" ".join(parts))
 
         if self._can_open_host_panel():
-            self.game.sounds.play_ui("ui_panel", "ui_select")
+            self.game.sounds.play_ui_panned("ui_panel", 0.8, "ui_select")
             accessibility.speak("Host control panel. Press Enter or Space to interact with controls.")
 
     def _get_exit_summary(self, zone):
@@ -262,11 +262,19 @@ class Lobby:
             accessibility.speak(f"No path {direction} from {self.current_zone}.")
             return
 
+        pan_map = {
+            "left": -0.8,
+            "right": 0.8,
+            "up": 0.0,
+            "down": 0.0,
+        }
+        pan = pan_map.get(direction, 0.0)
+
         if self.is_seated:
             self._set_seated(False, announce=True)
 
-        self.game.sounds.play_ui("ui_leave", "ui_step")
-        self.game.sounds.play_ui("ui_step", "ui_move")
+        self.game.sounds.play_ui_panned("ui_leave", pan, "ui_step")
+        self.game.sounds.play_ui_panned("ui_step", pan, "ui_move")
         self.current_zone = next_zone
         self.game.network.send({"action": "move_zone", "zone": self.current_zone})
         self._announce_zone()

@@ -79,10 +79,29 @@ class SoundManager:
         if not self.enabled:
             return
         if key in self.sounds:
-            self.sounds[key].play()
+            self._play_with_pan(self.sounds[key], 0.0)
             return
         if fallback_key and fallback_key in self.sounds:
-            self.sounds[fallback_key].play()
+            self._play_with_pan(self.sounds[fallback_key], 0.0)
+
+    def play_ui_panned(self, key, pan=0.0, fallback_key=None):
+        if not self.enabled:
+            return
+        if key in self.sounds:
+            self._play_with_pan(self.sounds[key], pan)
+            return
+        if fallback_key and fallback_key in self.sounds:
+            self._play_with_pan(self.sounds[fallback_key], pan)
+
+    def _play_with_pan(self, sound, pan):
+        channel = sound.play()
+        if channel is None:
+            return
+
+        p = max(-1.0, min(1.0, float(pan)))
+        left = 1.0 if p <= 0 else 1.0 - p
+        right = 1.0 if p >= 0 else 1.0 + p
+        channel.set_volume(left, right)
 
     def play_music(self, key, loops=-1):
         if not self.enabled: return
