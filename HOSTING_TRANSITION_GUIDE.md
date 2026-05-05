@@ -37,6 +37,7 @@ Use Left and Right while the panel is open to switch pages:
 - Show Controls page for lights, music bed, and stings
 - Show Controls page includes Refresh Session Assets to republish changes mid-lobby
 - Show Controls page includes Sync Status to announce revision, skipped files, and player readiness
+- Show Controls page includes Reliability Status to announce active host and reconnect grace timers
 - Flow and Presets page for call-up order, explicit Move Target To Hot Seat, and setup presets
 - Flow and Presets page includes Quick Switch Preset to cycle and apply the next preset in one action
 - Flow and Presets page includes Save Current As Preset for reusable host studio snapshots

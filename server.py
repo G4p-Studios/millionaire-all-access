@@ -16,6 +16,7 @@ from settings import (
     LOBBY_SPY_URL as DEFAULT_SPY_URL,
     SESSION_SYNC_CHUNK_SIZE,
     SESSION_SYNC_MAX_FILE_SIZE,
+    DISCONNECT_GRACE_SECONDS,
 )
 
 # Default Configuration
@@ -48,8 +49,6 @@ s.listen(4)
 print("Waiting for connections...")
 
 # Game State
-DISCONNECT_GRACE_SECONDS = 30
-
 game_state_lock = threading.Lock()
 game_state = {
     "players": [],

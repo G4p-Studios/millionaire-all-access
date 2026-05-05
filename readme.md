@@ -111,15 +111,14 @@ This project is focused on stable accessibility and host usability first. Additi
 
 When open, the host control panel has two pages:
 
-- Show Controls: Lights, Music Bed, Sting, Refresh Session Assets, Sync Status, Start Game
+- Show Controls: Lights, Music Bed, Play Sting, Refresh Session Assets, Sync Status, Reliability Status, Start Game
 - Flow and Presets: Call-Up Target, Call Next Contestant, Move Target To Hot Seat, Quick Switch Preset, Setup Preset, Apply Setup Preset, Save Current As Preset, Import Preset Pack, Delete Selected Preset
 
 Setup presets now apply a full studio state bundle:
 
-- light preset
-- music bed preset
-- host zone and seated or standing posture
-- call-up pointer behavior
+- lights and music bed
+- host location and seated or standing posture
+- call-up pointer reset or keep behavior
 
 Hosts can create and persist custom presets from the panel using Save Current As Preset.
 Saved presets are also written as JSON preset pack files in assets/preset_packs and loaded automatically.

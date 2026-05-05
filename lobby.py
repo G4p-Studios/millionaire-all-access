@@ -94,6 +94,7 @@ class Lobby:
             "Play Sting",
             "Refresh Session Assets",
             "Sync Status",
+            "Reliability Status",
             "Go To Flow Page",
             "Start Game",
             "Close Panel",
@@ -151,6 +152,7 @@ class Lobby:
         self.last_sync_skipped_count = 0
         self.last_sync_manifest_count = 0
         self.last_sync_source = ""
+        self.last_server_time = 0.0
         self.connection_retry_started_at = 0
         self.connection_retry_announced = False
 
@@ -369,7 +371,7 @@ class Lobby:
             detail = self.setup_presets[self.setup_index]
         elif item == "Delete Selected Preset":
             detail = self.setup_presets[self.setup_index]
-        elif item == "Sync Status":
+        elif item == "Sync Status" or item == "Reliability Status":
             detail = "Press Enter"
 
         announcement = item if not detail else f"{item}: {detail}"
@@ -776,6 +778,33 @@ class Lobby:
             f"Player states: {player_state_text}."
         )
 
+    def _announce_reliability_status(self):
+        active_name = "Unknown"
+        connected = []
+        reconnecting = []
+
+        for p in self.players:
+            if p.id == self.active_host_id:
+                active_name = p.name
+
+            if getattr(p, "connected", True):
+                connected.append(p.name)
+            else:
+                disconnected_at = float(getattr(p, "disconnected_at", 0.0))
+                if self.last_server_time > 0 and disconnected_at > 0:
+                    elapsed = max(0.0, self.last_server_time - disconnected_at)
+                    remaining = max(0, int(DISCONNECT_GRACE_SECONDS - elapsed))
+                else:
+                    remaining = int(DISCONNECT_GRACE_SECONDS)
+                reconnecting.append(f"{p.name} {remaining} seconds remaining")
+
+        reconnecting_text = ", ".join(reconnecting) if reconnecting else "none"
+        accessibility.speak(
+            f"Reliability status. Active host: {active_name}. "
+            f"Connected players: {len(connected)}. "
+            f"Reconnecting players: {reconnecting_text}."
+        )
+
     def _host_publish_session_assets(self):
         source, source_exists, manifest, files, skipped_too_large = self._collect_session_assets()
         self.last_sync_source = source
@@ -1136,6 +1165,9 @@ class Lobby:
             elif item == "Sync Status":
                 accessibility.speak("Confirmed. Reporting sync status.")
                 self._announce_sync_status()
+            elif item == "Reliability Status":
+                accessibility.speak("Confirmed. Reporting reliability status.")
+                self._announce_reliability_status()
             elif item == "Go To Flow Page":
                 self._switch_panel_page(1)
             elif item == "Start Game":
@@ -1238,6 +1270,7 @@ class Lobby:
             self.connection_retry_announced = False
 
             self.lobby_name = game_state.get("lobby_name", "Lobby")
+            self.last_server_time = float(game_state.get("server_time", 0.0))
             previous_zone = self.current_zone
 
             previous_host_id = self.active_host_id
